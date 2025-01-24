@@ -59,10 +59,7 @@ async function initiateUpload(auth, chunkNumber, folderId) {
 
 
 
-<<<<<<< HEAD
-=======
 
->>>>>>> 183fc38f85631e7185b08541f4ac91a75ab0fc3a
 async function uploadChunk(auth, fileId, chunkStream, start, end, fileSize) {
     //Headers exist for HTTP protocols, I customised it to handle the uploads.
     const headers = {
@@ -91,10 +88,7 @@ async function uploadChunk(auth, fileId, chunkStream, start, end, fileSize) {
 
 
 
-<<<<<<< HEAD
-=======
 
->>>>>>> 183fc38f85631e7185b08541f4ac91a75ab0fc3a
 async function uploadFileInChunks(auth, folderId) {
     const fileSize = fs.statSync(filePath).size;
     let start = 0;
@@ -135,10 +129,7 @@ const folderId = ""; // Replace with the Google Drive folder ID. You can get it 
 uploadFileInChunks(auth, folderId).catch(console.error); //Initiate the process, log if any errors.
 
 
-<<<<<<< HEAD
 //Here will be a mechanism to automatically update access tokens via refresh tokens. Was quite frustrating to figure out manually.
 
 
-=======
 //This is the end of the code. I will be updating this as I learn more about the google drive API.
->>>>>>> 183fc38f85631e7185b08541f4ac91a75ab0fc3a
