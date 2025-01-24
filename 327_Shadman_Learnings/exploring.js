@@ -14,7 +14,7 @@
 const fs = require("fs");
 const path = require("path");
 const { google } = require("googleapis");
-const filePath = "/Users/shadman/Downloads/Advanced Engineering Mathematics_10th Edition_- Author-Erwin_kreyszig.pdf"; // Input file
+const filePath = "/Users/shadman/Downloads/Probability-and-Statistics.pdf"; // Input file
 const chunkSize = 16 * 1024 * 1024; // 16 MB
 const fileExtension = path.extname(filePath);
 const fileNameWithoutExt = path.basename(filePath, fileExtension); // Get the file name without extension
@@ -115,9 +115,9 @@ async function uploadFileInChunks(auth, folderId) {
 
 //Use own credentials please! Will provide link on how to get those. Basically authenticating yourself to use api.
 const auth = new google.auth.OAuth2(
-    "",
-    "",
-    ""
+    "CLIENT_ID",
+    "CLIENT_SECRET",
+    "REDIRECT"
 );
 
 
