@@ -56,6 +56,10 @@ async function initiateUpload(auth, chunkNumber, folderId) {
   into action and 'updates' the created file with the content which should be placed
   here. This function might subject to change as I have not tried to download and
   merge from drive. */
+
+
+
+
 async function uploadChunk(auth, fileId, chunkStream, start, end, fileSize) {
     //Headers exist for HTTP protocols, I customised it to handle the uploads.
     const headers = {
@@ -81,6 +85,10 @@ async function uploadChunk(auth, fileId, chunkStream, start, end, fileSize) {
   attributes. Ones file gets chunked first, file in drive gets created, the chunk gets read
   and written/updated on the destined drive file. Later the bytes are updated so that it can 
   read the next chunk. */
+
+
+
+
 async function uploadFileInChunks(auth, folderId) {
     const fileSize = fs.statSync(filePath).size;
     let start = 0;
