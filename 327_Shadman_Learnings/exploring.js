@@ -14,7 +14,7 @@
 const fs = require("fs");
 const path = require("path");
 const { google } = require("googleapis");
-const filePath = "/Users/shadman/Downloads/mfcc_data4.json"; // Input file
+const filePath = "/Users/shadman/Downloads/Advanced Engineering Mathematics_10th Edition_- Author-Erwin_kreyszig.pdf"; // Input file
 const chunkSize = 16 * 1024 * 1024; // 16 MB
 const fileExtension = path.extname(filePath);
 const fileNameWithoutExt = path.basename(filePath, fileExtension); // Get the file name without extension
@@ -56,6 +56,9 @@ async function initiateUpload(auth, chunkNumber, folderId) {
   into action and 'updates' the created file with the content which should be placed
   here. This function might subject to change as I have not tried to download and
   merge from drive. */
+
+
+
 async function uploadChunk(auth, fileId, chunkStream, start, end, fileSize) {
     //Headers exist for HTTP protocols, I customised it to handle the uploads.
     const headers = {
@@ -81,6 +84,9 @@ async function uploadChunk(auth, fileId, chunkStream, start, end, fileSize) {
   attributes. Ones file gets chunked first, file in drive gets created, the chunk gets read
   and written/updated on the destined drive file. Later the bytes are updated so that it can 
   read the next chunk. */
+
+
+
 async function uploadFileInChunks(auth, folderId) {
     const fileSize = fs.statSync(filePath).size;
     let start = 0;
@@ -107,18 +113,20 @@ async function uploadFileInChunks(auth, folderId) {
 
 //Use own credentials please! Will provide link on how to get those. Basically authenticating yourself to use api.
 const auth = new google.auth.OAuth2(
-    "CLIENT ID",
-    "CLIENT SECRET",
-    "REDIRECT"
+    "",
+    "",
+    ""
 );
 
 
 
 
 
-auth.setCredentials({ access_token: "ACCESS TOKEN" });
-const folderId = "FOLDER ID"; // Replace with the Google Drive folder ID. You can get it at the end of your google drive folder URL.
+auth.setCredentials({ access_token: "" });
+const folderId = ""; // Replace with the Google Drive folder ID. You can get it at the end of your google drive folder URL.
 uploadFileInChunks(auth, folderId).catch(console.error); //Initiate the process, log if any errors.
 
 
-//This is the end of the code. I will be updating this as I learn more about the google drive API.
+//Here will be a mechanism to automatically update access tokens via refresh tokens. Was quite frustrating to figure out manually.
+
+
