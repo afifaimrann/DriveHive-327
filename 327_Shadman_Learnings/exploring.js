@@ -18,6 +18,7 @@ const filePath = "/Users/shadman/Downloads/Probability-and-Statistics.pdf"; // I
 const chunkSize = 16 * 1024 * 1024; // 16 MB
 const fileExtension = path.extname(filePath);
 const fileNameWithoutExt = path.basename(filePath, fileExtension); // Get the file name without extension
+const downloadFilePath = "/Users/shadman/Downloads"; //Write my downloaded files here for testing.
 
 
 
@@ -109,8 +110,28 @@ async function uploadFileInChunks(auth, folderId) {
     console.log("All chunks successfully uploaded as separate files.");
 }
 
+//-------------------------------------------------------------------------------
+
+//Untested code for downloading files from google drive. Will test it later.
+//Merging files needed to be done as well, which would require stronger metadata.
 
 
+async function downloadFile(auth, fileId, downloadFilePath){
+    const drive = google.drive({version: "v3", auth});
+    fs.createWriteStream(downloadFilePath);
+    await drive.files.get({fileId, alt: "media"}, {responseType: "stream"})
+    .then(res => {
+        res.data.on("end", () => {
+            console.log("Downloaded file.");
+        })
+        .on("error", err => {
+            console.error("Error downloading file.");
+        })
+    })
+}
+
+
+//--------------------------------------------------------------------------------
 
 
 //Use own credentials please! Will provide link on how to get those. Basically authenticating yourself to use api.
