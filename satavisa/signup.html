@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dropify - Sign Up with Google</title>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            height: 100vh;
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background-color: #fff;
+        }
+
+        h1 {
+            color: #800000;
+            font-size: 3rem;
+            margin-bottom: 40px;
+        }
+
+        .google-signin {
+            margin-top: 20px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>DROPIFY</h1>
+
+    <!-- Google Sign-In Button -->
+    <div id="g_id_onload" data-client_id="YOUR_GOOGLE_CLIENT_ID" data-context="signup"
+        data-callback="handleCredentialResponse" data-auto_prompt="false">
+    </div>
+
+    <div class="google-signin">
+        <div class="g_id_signin" data-type="standard" data-shape="pill"></div>
+    </div>
+
+    <script>
+        // Callback function for handling sign-in credentials
+        function handleCredentialResponse(response) {
+            const decodedJWT = JSON.parse(atob(response.credential.split('.')[1]));
+            alert(`Welcome, ${decodedJWT.name}!`);
+            console.log(decodedJWT); // Use the JWT token for further authentication
+        }
+    </script>
+</body>
+
+</html>
