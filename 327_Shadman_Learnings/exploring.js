@@ -14,11 +14,12 @@
 const fs = require("fs");
 const path = require("path");
 const { google } = require("googleapis");
+const { application } = require("express");
 const filePath = "/Users/shadman/Downloads/Probability-and-Statistics.pdf"; // Input file
 const chunkSize = 16 * 1024 * 1024; // 16 MB
 const fileExtension = path.extname(filePath);
 const fileNameWithoutExt = path.basename(filePath, fileExtension); // Get the file name without extension
-const downloadFilePath = "/Users/shadman/Downloads"; //Write my downloaded files here for testing.
+const downloadFilePath = "/Users/shadman/Downloads/Testing_Downloads/testbook.pdf"; //Write my downloaded files here for testing.
 
 
 
@@ -110,28 +111,65 @@ async function uploadFileInChunks(auth, folderId) {
     console.log("All chunks successfully uploaded as separate files.");
 }
 
+
+
+
 //-------------------------------------------------------------------------------
 
-//Untested code for downloading files from google drive. Will test it later.
-//Merging files needed to be done as well, which would require stronger metadata.
+//Tested and working download function for files.
+//But the files are still to be merged. And not efficient, very rigid downloads.
+//Need to incorporate a solid data storage to track which files to download and merge.
+
+async function downloadFile(auth, folderId) {
+    const drive = google.drive({ version: "v3", auth });
+
+    const filesResponse = await drive.files.list({
+        q: `'${folderId}' in parents and mimeType='application/pdf'` //since uploaded only pdf files. Once again, not efficient.
+    });
+
+    const files = filesResponse.data.files;
+
+    // if (!files) {
+    //     console.log("No files found in the folder.");
+    //     return;
+    // }
+
+    // console.log(`Found ${files.length} files in the folder.`);
+
+    for (const file of files) {
+        const fileDownPath = '/Users/shadman/Downloads/Testing_Downloads/' + file.name; //Hardcoded path on local dir.
+        const dest = fs.createWriteStream(fileDownPath);
+        const response = await drive.files.get({ fileId: file.id },
+            { responseType: "stream" })
+        response.data.pipe(dest).on("finish", () => {
+            console.log(`Successfully downloaded: ${file.name}`);
+        })
+    }
 
 
-async function downloadFile(auth, fileId, downloadFilePath){
-    const drive = google.drive({version: "v3", auth});
-    fs.createWriteStream(downloadFilePath);
-    await drive.files.get({fileId, alt: "media"}, {responseType: "stream"})
-    .then(res => {
-        res.data.on("end", () => {
-            console.log("Downloaded file.");
-        })
-        .on("error", err => {
-            console.error("Error downloading file.");
-        })
-    })
+    // fs.createWriteStream(downloadFilePath);
+    // await drive.files.export({ fileId, mimeType: "application/pdf" }, { responseType: "stream" })
+    //     .then(res => {
+    //         res.data.on("end", () => {
+    //             console.log("Downloaded file.");
+    //         })
+    //             .on("error", err => {
+    //                 console.error(err);
+    //             })
+    //     })
 }
 
 
+//A function to merge the downloaded files. Will be implemented later.
+
+async function mergeFiles() {
+
+}
 //--------------------------------------------------------------------------------
+
+
+
+
 
 
 //Use own credentials please! Will provide link on how to get those. Basically authenticating yourself to use api.
@@ -148,6 +186,9 @@ const auth = new google.auth.OAuth2(
 auth.setCredentials({ access_token: "" });
 const folderId = ""; // Replace with the Google Drive folder ID. You can get it at the end of your google drive folder URL.
 uploadFileInChunks(auth, folderId).catch(console.error); //Initiate the process, log if any errors.
+
+downloadFile(auth, folderId).catch(console.error); //Test download function.
+
 
 
 //Here will be a mechanism to automatically update access tokens via refresh tokens. Was quite frustrating to figure out manually.
