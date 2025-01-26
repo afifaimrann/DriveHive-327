@@ -26,7 +26,6 @@ class MainActivity : AppCompatActivity() {
             gravity = Gravity.CENTER
         }
 
-        // Add Title to Root Layout
         rootLayout.addView(title)
 
         // Space
@@ -35,7 +34,7 @@ class MainActivity : AppCompatActivity() {
         }
         rootLayout.addView(space1)
 
-        // Login Button
+        // login button
         val loginButton = Button(this).apply {
             text = "LOGIN"
             setBackgroundColor(0xFF800000.toInt())
@@ -48,7 +47,7 @@ class MainActivity : AppCompatActivity() {
         }
         rootLayout.addView(loginButton)
 
-        // Line
+        // line
         val line = View(this).apply {
             layoutParams = LinearLayout.LayoutParams(200, 6).apply {
                 topMargin = 20
@@ -58,7 +57,7 @@ class MainActivity : AppCompatActivity() {
         }
         rootLayout.addView(line)
 
-        // Signup Button
+        // signup button
         val signUpButton = Button(this).apply {
             text = "SIGN UP"
             setBackgroundColor(0xFF800000.toInt())
@@ -71,7 +70,7 @@ class MainActivity : AppCompatActivity() {
         }
         rootLayout.addView(signUpButton)
 
-        // Set the layout as the content view
+        // content view
         setContentView(rootLayout)
     }
 }
