@@ -11,14 +11,12 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Root layout
+        // root layout
         val rootLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             setBackgroundColor(0xFFFFFFFF.toInt())
         }
-
-        // Title
         val title = TextView(this).apply {
             text = "DROPIFY"
             textSize = 32f
@@ -28,7 +26,7 @@ class MainActivity : AppCompatActivity() {
 
         rootLayout.addView(title)
 
-        // Space
+        // space
         val space1 = Space(this).apply {
             minimumHeight = 50
         }
