@@ -211,4 +211,4 @@ downloadAndCombineChunks(auth, folderId).catch(console.error); //Test download f
 //Here will be a mechanism to automatically update access tokens via refresh tokens. Was quite frustrating to figure out manually.
 
 
-//This is the end of the code. I will be updating this as I learn more about the google drive API.
+//There will be more work done on integrating a database and also to try and implement this on server side.
