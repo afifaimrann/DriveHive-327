@@ -115,55 +115,72 @@ async function uploadFileInChunks(auth, folderId) {
 
 
 //-------------------------------------------------------------------------------
+//27-01-2025, Today's update was to work on downloading and merging chunks.
 
-//Tested and working download function for files.
-//But the files are still to be merged. And not efficient, very rigid downloads.
-//Need to incorporate a solid data storage to track which files to download and merge.
 
-async function downloadFile(auth, folderId) {
+/*Working download and combining chunks method. But does not
+include metadata control, still downloads all files available
+in a single drive folder. Next to work on implementing
+this on a server end hopefully through RESTful APIs. Might want
+to look into Blob documentation for file handling, should
+be easier. Also, we might use Firebase for storing metadata for files. */
+
+
+
+async function downloadAndCombineChunks(auth, folderId) {
     const drive = google.drive({ version: "v3", auth });
 
     const filesResponse = await drive.files.list({
-        q: `'${folderId}' in parents and mimeType='application/pdf'` //since uploaded only pdf files. Once again, not efficient.
+        q: `'${folderId}' in parents and mimeType='application/pdf'`,
+        fields: "files(id, name)",
     });
 
     const files = filesResponse.data.files;
 
-    // if (!files) {
+    // if (!files || files.length === 0) {
     //     console.log("No files found in the folder.");
     //     return;
     // }
 
     // console.log(`Found ${files.length} files in the folder.`);
 
+    //To sort the files in order of upload. Inefficient but does the trick for now.
+    files.sort((a, b) => a.name.localeCompare(b.name));
+
+    //Hard coded local file path for now.
+    const combinedFilePath = "/Users/shadman/Downloads/Testing_Downloads/combined_file.pdf";
+    const combinedStream = fs.createWriteStream(combinedFilePath);
+
     for (const file of files) {
-        const fileDownPath = '/Users/shadman/Downloads/Testing_Downloads/' + file.name; //Hardcoded path on local dir.
-        const dest = fs.createWriteStream(fileDownPath);
-        const response = await drive.files.get({ fileId: file.id },
-            { responseType: "stream" })
-        response.data.pipe(dest).on("finish", () => {
-            console.log(`Successfully downloaded: ${file.name}`);
-        })
+        //console.log(`Appending file: ${file.name}`);
+
+
+        /*Encountered an issue where only through iteration and previous approach
+        the files were only getting overwritten instead of writing in the same stream.
+        So introduction of promise allows me to wait for writing one chunk before starting
+        to write another. */
+
+
+        await new Promise((resolve, reject) => {
+            drive.files.get({ fileId: file.id, alt: "media" }, { responseType: "stream" })
+                .then((response) => {
+                    response.data.on("end", () => {
+                        //console.log(`Finished appending: ${file.name}`);
+                        resolve();
+                    }).on("error", (err) => {
+                        //console.error(`Error appending ${file.name}:`, err.message);
+                        reject(err);
+                    }).pipe(combinedStream, { end: false });
+                }).catch((err) => {
+                    console.error(`Error fetching ${file.name}:`, err.message);
+                    reject(err);
+                });
+        });
     }
 
-
-    // fs.createWriteStream(downloadFilePath);
-    // await drive.files.export({ fileId, mimeType: "application/pdf" }, { responseType: "stream" })
-    //     .then(res => {
-    //         res.data.on("end", () => {
-    //             console.log("Downloaded file.");
-    //         })
-    //             .on("error", err => {
-    //                 console.error(err);
-    //             })
-    //     })
-}
-
-
-//A function to merge the downloaded files. Will be implemented later.
-
-async function mergeFiles() {
-
+    combinedStream.end(() => {
+        console.log(`All chunks combined into: ${combinedFilePath}`);
+    });
 }
 //--------------------------------------------------------------------------------
 
@@ -176,7 +193,7 @@ async function mergeFiles() {
 const auth = new google.auth.OAuth2(
     "CLIENT_ID",
     "CLIENT_SECRET",
-    "REDIRECT"
+    "REDIRECT_URL"
 );
 
 
@@ -185,9 +202,9 @@ const auth = new google.auth.OAuth2(
 
 auth.setCredentials({ access_token: "" });
 const folderId = ""; // Replace with the Google Drive folder ID. You can get it at the end of your google drive folder URL.
-uploadFileInChunks(auth, folderId).catch(console.error); //Initiate the process, log if any errors.
+//uploadFileInChunks(auth, folderId).catch(console.error); //Initiate the process, log if any errors.
 
-downloadFile(auth, folderId).catch(console.error); //Test download function.
+downloadAndCombineChunks(auth, folderId).catch(console.error); //Test download function.
 
 
 
