@@ -25,7 +25,12 @@ app.get("/test", (req,res)=>{
     res.send("Hello World");
 })
 
-
+app.get("/available_storage", (req,res)=>{
+    const drive = google.drive({version: "v3", auth});
+    drive.about.get({fields: "storageQuota"}).then((response)=>{
+        res.send(response.data);
+    })
+})
 
 
 //30-01-2025
