@@ -22,13 +22,13 @@ admin.initializeApp({
 const db = admin.firestore();
 
 const auth = new google.auth.OAuth2(
-    "141215357065-87u4u7v48g1dookd2as92lr06kpgk0eq.apps.googleusercontent.com",
-    "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",
-    "https://developers.google.com/oauthplayground"
+    "",
+    "",
+    ""
 );
 
-auth.setCredentials({ access_token: "ya29.a0AXeO80T60LQB-3g6M7oUjfhoAqjGcrXVdPuvR5ByznU65g3RF4GKSNlISEd7r-xHsT8suRfelOaB91lnAKUP3_PRfk0qpj2gLkzWdvR8n2z6T7L8B3rGeYS0yLUhCrF967mBVaQGUt84EKysbSaT-W57VmKJZ79ZRPtCF2TTaCgYKAWQSARESFQHGX2Mi37Rf0Wj90rkk2uVW8CLaEA0175" });
-const folderId = "1s6zhf6xnitlHOI7sagbb5PBvv5W9YiOR";
+auth.setCredentials({ access_token: "" });
+const folderId = "";
 const driveId = "suppose1";
 
 
