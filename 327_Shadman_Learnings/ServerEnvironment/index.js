@@ -5,7 +5,6 @@ just upload the sliced files. For now, these are my thoughts. Feel free to
 make or suggest changes. */
 
 const express = require("express");
-const PORT = 3000;
 const app = express();
 const fs = require("fs");
 const { google } = require("googleapis");
@@ -13,7 +12,7 @@ const multer = require("multer");
 const upload = multer({ dest: "uploads/" });
 var admin = require("firebase-admin");
 
-var serviceAccount = require("/Users/shadman/Downloads/amazingstoragesystem-firebase-adminsdk-fbsvc-d39da93c81.json");
+var serviceAccount = require("localpathtojsonfile");
 
 admin.initializeApp({
     credential: admin.credential.cert(serviceAccount)
@@ -81,13 +80,15 @@ app.post("/upload", upload.single('file'), async (req, res) => {
             body: fs.createReadStream(file.path),
         }
     });
-
+    /*Working approach to upload metadata of files into Firestore. From there
+    we can gain file names to view the files uploaded, map where chunks are etc.
+    Future work would be done on this. */
     try {
         const fileMetaData = {
             name: fileName,
             size: fileSize,
             uploadedAt: new Date().toISOString(),
-            isChunked: false,
+            isChunked: false, //Kept this, we can use it in future to treat edge cases for demo 1.
             driveId: driveId,
             googleDrivefileId: response.data.id,
             mimeType: file.mimetype,
@@ -165,6 +166,6 @@ entire logic in backend. */
 
 
 
-app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
+app.listen(3000, () => {
+    console.log(`Server is running on port 3000`);
 })
