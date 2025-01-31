@@ -11,16 +11,25 @@ const fs = require("fs");
 const { google } = require("googleapis");
 const multer = require("multer");
 const upload = multer({ dest: "uploads/" });
+var admin = require("firebase-admin");
 
+var serviceAccount = require("/Users/shadman/Downloads/amazingstoragesystem-firebase-adminsdk-fbsvc-d39da93c81.json");
+
+admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount)
+});
+
+const db = admin.firestore();
 
 const auth = new google.auth.OAuth2(
-    "CLIENT_ID",
-    "CLIENT_SECRET",
-    "Redirect_URI"
+    "141215357065-87u4u7v48g1dookd2as92lr06kpgk0eq.apps.googleusercontent.com",
+    "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",
+    "https://developers.google.com/oauthplayground"
 );
 
-auth.setCredentials({ access_token: "" });
-const folderId = "";
+auth.setCredentials({ access_token: "ya29.a0AXeO80T60LQB-3g6M7oUjfhoAqjGcrXVdPuvR5ByznU65g3RF4GKSNlISEd7r-xHsT8suRfelOaB91lnAKUP3_PRfk0qpj2gLkzWdvR8n2z6T7L8B3rGeYS0yLUhCrF967mBVaQGUt84EKysbSaT-W57VmKJZ79ZRPtCF2TTaCgYKAWQSARESFQHGX2Mi37Rf0Wj90rkk2uVW8CLaEA0175" });
+const folderId = "1s6zhf6xnitlHOI7sagbb5PBvv5W9YiOR";
+const driveId = "suppose1";
 
 
 app.get("/test", (req, res) => {
@@ -53,38 +62,57 @@ I need to work on the logic behind efficiently switching between multiple
 drives and to also set up multiple drives. */
 app.post("/upload", upload.single('file'), async (req, res) => {
     const drive = google.drive({ version: 'v3', auth });
-    const file = req.file; 
+    const file = req.file;
     const fileName = file.originalname;
     const fileSize = file.size;
 
     if (fileSize > availableStorage()) {
         res.send('Not enough storage available');
         // Logic for switching to another drive
-    } else {
-        const response = await drive.files.create({
-            requestBody: {
-                name: fileName,
-                mimeType: file.mimetype,
-                parents: [folderId],
-            },
-            media: {
-                mimeType: file.mimetype,
-                body: fs.createReadStream(file.path), 
-        }});
-        res.send(response.data);
     }
+    const response = await drive.files.create({
+        requestBody: {
+            name: fileName,
+            mimeType: file.mimetype,
+            parents: [folderId],
+        },
+        media: {
+            mimeType: file.mimetype,
+            body: fs.createReadStream(file.path),
+        }
+    });
+
+    try {
+        const fileMetaData = {
+            name: fileName,
+            size: fileSize,
+            uploadedAt: new Date().toISOString(),
+            isChunked: false,
+            driveId: driveId,
+            googleDrivefileId: response.data.id,
+            mimeType: file.mimetype,
+            downloadUrl: `https://drive.google.com/file/d/${response.data.id}/view`
+        }
+
+        const addData = await db.collection("files").add(fileMetaData);
+        fs.unlinkSync(file.path);
+    } catch (err) {
+        console.log(err);
+    }
+    res.send(response.data);
+
 })
 
 //For now loading files from drive only. Might set up firebase to store file names being uploaded.
-app.get("/folders", async(req,res)=>{
-    const drive = google.drive({version: "v3", auth});
+app.get("/folders", async (req, res) => {
+    const drive = google.drive({ version: "v3", auth });
     const response = await drive.files.list({
         pageSize: 10,
         fields: "files(id, name)"
     });
-    
+
     const files = response.data.files;
-    if(files.lenth === 0){
+    if (files.lenth === 0) {
         res.send("No files found");
     }
     res.send(files);
