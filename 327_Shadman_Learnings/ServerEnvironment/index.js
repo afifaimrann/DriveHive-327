@@ -12,7 +12,7 @@ const multer = require("multer");
 const upload = multer({ dest: "uploads/" });
 var admin = require("firebase-admin");
 
-var serviceAccount = require("localpathtojsonfile");
+var serviceAccount = require("firestore-credentials-local-path");
 
 admin.initializeApp({
     credential: admin.credential.cert(serviceAccount)
@@ -20,6 +20,7 @@ admin.initializeApp({
 
 const db = admin.firestore();
 
+//Will be removed if multiple account testing is successful
 const auth = new google.auth.OAuth2(
     "",
     "",
@@ -29,6 +30,76 @@ const auth = new google.auth.OAuth2(
 auth.setCredentials({ access_token: "" });
 const folderId = "";
 const driveId = "suppose1";
+
+//02-02-2025
+//testing multiple storages, across multiple accounts.
+const driveAccounts = [
+    {
+        id: "drive1",
+        auth: new google.auth.OAuth2("CLIENT_ID", "CLIENT_SECRET", "REDIRECT_URI"),
+        folderId: "FOLDER_ID",
+        access_token: "ACCESS_TOKEN"
+    },
+    {
+        id: "drive2",
+        auth: new google.auth.OAuth2("CLIENT_ID", "CLIENT_SECRET", "REDIRECT_URI"),
+        folderId: "FOLDER_ID",
+        access_token: "ACCESS_TOKEN"
+    },
+    {
+        id: "drive3",
+        auth: new google.auth.OAuth2("CLIENT_ID", "CLIENT_SECRET", "REDIRECT_URI"),
+        folderId: "FOLDER_ID",
+        access_token: "ACCESS_TOKEN"
+    }
+];
+
+driveAccounts.forEach(drive => {
+    drive.auth.setCredentials({
+        access_token: drive.access_token
+    });
+});
+
+
+const availableStorage = async (auth) => {
+    const drive = google.drive({ version: "v3", auth });
+    const response = await drive.about.get({ fields: "storageQuota" });
+    const storageQuota = response.data.storageQuota;
+    const used = parseInt(storageQuota.usageInDrive);
+    const total = parseInt(storageQuota.limit);
+    const available = total - used;
+    return available;
+};
+
+//02-02-2025
+//Looking for available storage in the allocated drives
+//Might integrate to possible new upload endpoint.
+const getDriveWithSpace = async (fileSize) => {
+    for (const driveAccount of driveAccounts) {
+        const available = await availableStorage(driveAccount.auth);
+        if (fileSize <= available) {
+            return driveAccount;
+        }
+    }
+    return null;
+};
+
+//02-02-2025
+//Looking for the drive with the maximum available storage, which could be efficient approach I think. Needs to be tested.
+//Integration to possible new upload endpoint.
+const getDriveWithMaxSpace = async (fileSize) => {
+    let candidate = null;
+    let maxAvailable = 0;
+
+    for (const driveAccount of driveAccounts) {
+        const available = await availableStorage(driveAccount.auth);
+        if (fileSize <= available && available > maxAvailable) {
+            maxAvailable = available;
+            candidate = driveAccount;
+        }
+    }
+    return candidate;
+};
 
 
 app.get("/test", (req, res) => {
@@ -44,16 +115,7 @@ app.get("/test", (req, res) => {
 //     const available = total - used;
 //     res.send({used, total, available});
 // })
-
-const availableStorage = async () => {
-    const drive = google.drive({ version: "v3", auth });
-    const response = await drive.about.get({ fields: "storageQuota" });
-    const storageQuota = response.data.storageQuota;
-    const used = parseInt(storageQuota.usageInDrive);
-    const total = parseInt(storageQuota.limit);
-    const available = total - used;
-    return available;
-}
+//----------------------------------------------
 
 //31-01-2025
 /*Working approach to uploading files in drive using multer via endpoints.
@@ -104,68 +166,34 @@ app.post("/upload", upload.single('file'), async (req, res) => {
 
 })
 
-//For now loading files from drive only. Might set up firebase to store file names being uploaded.
-app.get("/folders", async (req, res) => {
-    const drive = google.drive({ version: "v3", auth });
-    const response = await drive.files.list({
-        pageSize: 10,
-        fields: "files(id, name)"
-    });
 
-    const files = response.data.files;
-    if (files.lenth === 0) {
-        res.send("No files found");
+/*Working approach to list all the files uploaded via post request, hopefully across
+all drives as well. */
+app.get("/files", async (req, res) => {
+    try {
+        const snapshot = await db.collection("files").get();
+        const fileNames = [];
+
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            if (data && data.name) {
+                fileNames.push(data.name);
+            }
+        });
+
+        res.status(200).json({ files: fileNames });
+    } catch (error) {
+        console.error("Error retrieving files:", error);
+        res.status(500).send("Error retrieving files");
     }
-    res.send(files);
-})
-
-//Also decided to keep this since will be using the chunking logic when a drive is out of storage for the file to be uploaded.
-//30-01-2025
-//Having issues with setting up server side logic for uploading files in chunks. 
-/*Initial plan was to do slicing in the frontend, but trying to implement the
-entire logic in backend. */
-
-// app.post("/upload", async (req,res)=>{
-//     const drive = google.drive({ version: "v3", auth });
-
-//     await async function uploadFileInChunks(auth, folderId) {
-//         const fileSize = fs.statSync(filePath).size;
-//         let start = 0;
-//         let end = Math.min(chunkSize, fileSize); //If any file less than 16MB
-//         let chunkNumber = 0;
-//         while (start < fileSize) {
-//             const chunkStream = fs.createReadStream(filePath, { start, end });
-//             // Create a new file for each chunk
-//             const fileId = await initiateUpload(auth, chunkNumber, folderId);
-//             // Upload the current chunk to the newly created file
-//             await uploadChunk(auth, fileId, chunkStream, start, end, fileSize);
-//             console.log(`Uploaded chunk ${chunkNumber}`);
-//             // Move to the next chunk
-//             start = end;
-//             end = Math.min(start + chunkSize, fileSize);
-//             chunkNumber++;
-//         }
-//         console.log("All chunks successfully uploaded as separate files.");
-//     }
-
-//     async function initiateUpload(auth, chunkNumber, folderId) {
-//         const drive = google.drive({ version: "v3", auth }); //authenticated drive obj
-//         const res = await drive.files.create({
-//             requestBody: {
-//                 name: `${fileNameWithoutExt}_chunk_${chunkNumber}${fileExtension}`, // Unique name for each chunk
-//                 parents: [folderId],
-//             },
-//             media: {
-//                 mimeType: "application/octet-stream", //We are dealing in binary
-//             },
-//             uploadType: "resumable", //Felt this was useful from the documentation
-//         });
-//         return res.data.id; // Return the file ID for this chunk
-//     }
-// })
+});
 
 
 
 app.listen(3000, () => {
     console.log(`Server is running on port 3000`);
 })
+
+
+
+
