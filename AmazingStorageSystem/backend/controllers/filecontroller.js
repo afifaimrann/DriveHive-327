@@ -13,7 +13,7 @@ const getDriveClient = (accessToken) => {
     return google.drive({ version: 'v3', auth });
 };
 
-// function to fetch files from a single Google Drive account
+// function to fetch files from a single drive
 const fetchFilesFromDrive = async (driveClient) => {
     try {
         const response = await driveClient.files.list({
