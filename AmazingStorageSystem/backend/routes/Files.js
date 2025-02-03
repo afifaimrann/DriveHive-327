@@ -1,17 +1,20 @@
-const express = require("express");
-const multer = require("multer");
-const { uploadFile } = require("../services/googleDriveService");
+import express from 'express';
+import { mergeStorage, uploadFile, downloadFile, searchFiles } from '../controllers/fileController.js';
+import { protect } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
-const upload = multer();
 
-router.post("/upload", upload.single("file"), async (req, res) => {
-  try {
-    const file = await uploadFile(req.file);
-    res.json({ fileId: file.id, link: `https://drive.google.com/file/d/${file.id}` });
-  } catch (error) {
-    res.status(500).send(error.message);
-  }
-});
+// merge storage 
+router.get('/merge-storage', protect, mergeStorage);
 
-module.exports = router;
+// upload file 
+router.post('/upload', protect, uploadFile);
+
+// download file
+router.get('/download/:fileId', protect, downloadFile);
+
+// search files 
+router.get('/search', protect, searchFiles);
+
+export default router;
+
