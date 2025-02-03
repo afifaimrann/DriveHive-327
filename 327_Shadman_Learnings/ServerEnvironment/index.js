@@ -158,7 +158,7 @@ app.post("/upload", upload.single('file'), async (req, res) => {
             }
         });
 
-        
+
         /*If we are tasked with suppose when chunking a file, this snippet might get triggered
         and the db would have the file name as much times it got chunked. So we need to write our chunking
         function efficiently in order to avoid this getting called, so that the data gets stored only when
@@ -211,6 +211,53 @@ app.listen(3000, () => {
     console.log(`Server is running on port 3000`);
 })
 
+//----------------------------UNTESTED CODE--------------------------------------------
 
+//03-02-2025
+//Took the code from Satavisa's files. Will work around these to hopefully integrate the downloading of files.
+const fetchFilesFromDrive = async (driveClient) => {
+    try {
+        const response = await driveClient.files.list({
+            pageSize: 100, // fetches up to 100 files
+            fields: 'files(id, name, mimeType, size, modifiedTime, parents)',
+        });
+        return response.data.files;
+    } catch (error) {
+        console.error('Error fetching files:', error);
+        return [];
+    }
+};
+
+
+// **Function to merge files 
+const mergeStorage = async (req, res) => {
+    try {
+        const userId = req.user.id; 
+        const user = await user.findById(userId);
+
+        if (!user || !user.driveAccounts || user.driveAccounts.length === 0) {
+            return res.status(400).json({ message: 'No linked Google Drive accounts.' });
+        }
+
+        let allFiles = [];
+
+        for (const account of user.driveAccounts) {
+            const driveClient = getDriveClient(account.accessToken);
+            const files = await fetchFilesFromDrive(driveClient);
+            
+            allFiles = [...allFiles, ...files.map(file => ({
+                ...file,
+                driveAccount: account.email, 
+            }))];
+        }
+
+        res.json({ files: allFiles });
+    } catch (error) {
+        console.error('Error merging storage:', error);
+        res.status(500).json({ message: 'Server error' });
+    }
+};
+
+//----------------------------UNTESTED CODE--------------------------------------------
 
 
