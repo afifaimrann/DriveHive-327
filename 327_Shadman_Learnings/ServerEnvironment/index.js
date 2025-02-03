@@ -20,19 +20,18 @@ admin.initializeApp({
 
 const db = admin.firestore();
 
-//Will be removed if multiple account testing is successful
-const auth = new google.auth.OAuth2(
-    "",
-    "",
-    ""
-);
+// const auth = new google.auth.OAuth2(
+//     "",
+//     "",
+//     ""
+// );
 
-auth.setCredentials({ access_token: "" });
-const folderId = "";
-const driveId = "suppose1";
+// auth.setCredentials({ access_token: "" });
+// const folderId = "";
+// const driveId = "suppose1";
 
-//02-02-2025
-//testing multiple storages, across multiple accounts.
+//testing multiple storages
+
 const driveAccounts = [
     {
         id: "drive1",
@@ -71,9 +70,7 @@ const availableStorage = async (auth) => {
     return available;
 };
 
-//02-02-2025
-//Looking for available storage in the allocated drives
-//Might integrate to possible new upload endpoint.
+
 const getDriveWithSpace = async (fileSize) => {
     for (const driveAccount of driveAccounts) {
         const available = await availableStorage(driveAccount.auth);
@@ -87,6 +84,7 @@ const getDriveWithSpace = async (fileSize) => {
 //02-02-2025
 //Looking for the drive with the maximum available storage, which could be efficient approach I think. Needs to be tested.
 //Integration to possible new upload endpoint.
+//Maybe we do not use this function as demo 1 requires us to tackle the edge case.
 const getDriveWithMaxSpace = async (fileSize) => {
     let candidate = null;
     let maxAvailable = 0;
@@ -116,59 +114,78 @@ app.get("/test", (req, res) => {
 //     res.send({used, total, available});
 // })
 //----------------------------------------------
+// const availableStorage = async () => {
+//     const drive = google.drive({ version: "v3", auth });
+//     const response = await drive.about.get({ fields: "storageQuota" });
+//     const storageQuota = response.data.storageQuota;
+//     const used = parseInt(storageQuota.usageInDrive);
+//     const total = parseInt(storageQuota.limit);
+//     const available = total - used;
+//     return available;
+// }
 
 //31-01-2025
 /*Working approach to uploading files in drive using multer via endpoints.
 I need to work on the logic behind efficiently switching between multiple
 drives and to also set up multiple drives. */
+
+
+//03-03-2025
+/*A working approach to dynamically upload into multiple drives but it currently
+is happening based on most empty space available. Demo 1 requires us to
+rather slice files when storage is not available. We need to HANDLE SLICING */
 app.post("/upload", upload.single('file'), async (req, res) => {
-    const drive = google.drive({ version: 'v3', auth });
     const file = req.file;
     const fileName = file.originalname;
     const fileSize = file.size;
 
-    if (fileSize > availableStorage()) {
-        res.send('Not enough storage available');
-        // Logic for switching to another drive
+    const driveAccount = await getDriveWithMaxSpace(fileSize);
+    if (!driveAccount) {
+        return res.status(400).send("Not enough storage available on any drive"); //Debugging availability of drive
     }
-    const response = await drive.files.create({
-        requestBody: {
-            name: fileName,
-            mimeType: file.mimetype,
-            parents: [folderId],
-        },
-        media: {
-            mimeType: file.mimetype,
-            body: fs.createReadStream(file.path),
-        }
-    });
-    /*Working approach to upload metadata of files into Firestore. From there
-    we can gain file names to view the files uploaded, map where chunks are etc.
-    Future work would be done on this. */
+
+    const drive = google.drive({ version: 'v3', auth: driveAccount.auth });
     try {
+        const response = await drive.files.create({
+            requestBody: {
+                name: fileName,
+                mimeType: file.mimetype,
+                parents: [driveAccount.folderId],
+            },
+            media: {
+                mimeType: file.mimetype,
+                body: fs.createReadStream(file.path),
+            }
+        });
+
+        
+        /*If we are tasked with suppose when chunking a file, this snippet might get triggered
+        and the db would have the file name as much times it got chunked. So we need to write our chunking
+        function efficiently in order to avoid this getting called, so that the data gets stored only when
+        we are uploading for the first time, the file itself as a whole. */
+
+
         const fileMetaData = {
             name: fileName,
             size: fileSize,
-            uploadedAt: new Date().toISOString(),
+            uploadedAt: new Date().toISOString(), //Readable date format
             isChunked: false, //Kept this, we can use it in future to treat edge cases for demo 1.
-            driveId: driveId,
+            driveId: driveAccount.id, //We might use this to identify the drive
             googleDrivefileId: response.data.id,
             mimeType: file.mimetype,
-            downloadUrl: `https://drive.google.com/file/d/${response.data.id}/view`
-        }
+            downloadUrl: `https://drive.google.com/file/d/${response.data.id}/view` //We might use this to download the file if it is not chunked.
+        };
 
-        const addData = await db.collection("files").add(fileMetaData);
-        fs.unlinkSync(file.path);
+        await db.collection("files").add(fileMetaData);
+        fs.unlinkSync(file.path); // Clean up local file after upload
+        res.send(response.data);
     } catch (err) {
         console.log(err);
     }
-    res.send(response.data);
-
 })
 
 
-/*Working approach to list all the files uploaded via post request, hopefully across
-all drives as well. */
+//Tested working approach to view the file names from firestore.
 app.get("/files", async (req, res) => {
     try {
         const snapshot = await db.collection("files").get();
