@@ -242,7 +242,7 @@ const mergeStorage = async (req, res) => {
         let allFiles = [];
 
         for (const account of user.driveAccounts) {
-            const driveClient = getDriveClient(account.accessToken);
+            const driveClient = driveClient(account.accessToken);
             const files = await fetchFilesFromDrive(driveClient);
             
             allFiles = [...allFiles, ...files.map(file => ({
@@ -261,3 +261,16 @@ const mergeStorage = async (req, res) => {
 //----------------------------UNTESTED CODE--------------------------------------------
 
 
+
+//----------------------------Further works---------------------------//
+const getDriveWithSpace2 = async (fileSize) => {
+    for (const driveAccount of driveAccounts) {
+        const available = await availableStorage(driveAccount.auth);
+        if (fileSize <= available) {
+            return driveAccount;
+        }
+    }
+    return null;
+};
+
+//-----------------------------Further works---------------------------//
