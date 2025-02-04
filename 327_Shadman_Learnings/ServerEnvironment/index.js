@@ -232,7 +232,7 @@ const fetchFilesFromDrive = async (driveClient) => {
 // **Function to merge files 
 const mergeStorage = async (req, res) => {
     try {
-        const userId = req.user.id; 
+        const userId = req.user.id;
         const user = await user.findById(userId);
 
         if (!user || !user.driveAccounts || user.driveAccounts.length === 0) {
@@ -244,10 +244,10 @@ const mergeStorage = async (req, res) => {
         for (const account of user.driveAccounts) {
             const driveClient = driveClient(account.accessToken);
             const files = await fetchFilesFromDrive(driveClient);
-            
+
             allFiles = [...allFiles, ...files.map(file => ({
                 ...file,
-                driveAccount: account.email, 
+                driveAccount: account.email,
             }))];
         }
 
@@ -274,3 +274,24 @@ const getDriveWithSpace2 = async (fileSize) => {
 };
 
 //-----------------------------Further works---------------------------//
+
+
+
+app.get("/download", async (req, res) => {
+    const fileNames = [];
+    //reuse this from files endpoint
+    snapshot.forEach(doc => {
+        const data = doc.data();
+        if (data && data.name) {
+            fileNames.push(data.name);
+        }
+    });
+
+    //request the user to enter a file name.
+    //any other efficient way would be ok.
+
+    const fileName = req.query.fileName;
+    //use this to check in the array for available files.
+
+    //if the file exists, then download the file.
+})
