@@ -350,17 +350,80 @@ const getDriveWithSpace2 = async (fileSize) => {
 app.get("/download", async (req, res) => {
     const fileNames = [];
     //reuse this from files endpoint
-    snapshot.forEach(doc => {
+    // for both chunked & non-chunked file
+    const fileName = req.query.fileName;
+    if (!fileName) {
+        return res.status(400).send("fileName query parameter is required");
+    }
+
+    try {
+        // query Firestore for file
+        const snapshot = await db.collection("files")
+            .where("name", "==", fileName)
+            .get();
+
+        if (snapshot.empty) {
+            return res.status(404).send("File not found");
+        }
+
+        // Gget the first matching document
+        const fileDoc = snapshot.docs[0];
+        const fileData = fileDoc.data();
+
+        // handle chunked files
+        if (fileData.isChunked) {
+            return res.status(501).send("Chunked file download not yet implemented");
+        }
+
+        // find the corresponding drive account
+        const driveAccount = driveAccounts.find(d => d.id === fileData.driveId);
+        if (!driveAccount) {
+            return res.status(500).send("Associated Drive account not found");
+        }
+
+        // initialize Google Drive client
+        const drive = google.drive({ version: 'v3', auth: driveAccount.auth });
+
+        // get file from Google Drive
+        const fileMeta = await drive.files.get({
+            fileId: fileData.googleDrivefileId,
+            fields: 'id, name, mimeType, size'
+        });
+
+        // Set response headers
+        res.setHeader('Content-Disposition', `attachment; filename="${fileMeta.data.name}"`);
+        res.setHeader('Content-Type', fileMeta.data.mimeType);
+        res.setHeader('Content-Length', fileMeta.data.size);
+
+        // Stream the file from Google Drive
+        const response = await drive.files.get({
+            fileId: fileData.googleDrivefileId,
+            alt: 'media'
+        }, { responseType: 'stream' });
+
+        response.data
+            .on('error', err => {
+                console.error('Error streaming file:', err);
+                res.status(500).end();
+            })
+            .pipe(res);
+
+    } catch (error) {
+        console.error('Download error:', error);
+        res.status(500).send("Internal server error");
+    }
+// till this **
+    /*snapshot.forEach(doc => {
         const data = doc.data();
         if (data && data.name) {
             fileNames.push(data.name);
-        }
+        })*/
     });
 
     //request the user to enter a file name.
     //any other efficient way would be ok.
 
-    const fileName = req.query.fileName;
+    //const fileName = req.query.fileName;
     //use this to check in the array for available files.
 
     //if the file exists, then download the file.
