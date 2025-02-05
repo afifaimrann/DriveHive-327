@@ -100,6 +100,76 @@ const getDriveWithMaxSpace = async (fileSize) => {
 };
 
 
+
+//05-02-2025
+/*Facing a bug where the file is not getting sliced as it should have. And cannot
+test either until download function is up and running. So keeping this as pause for now.
+After cleaning up the bugs, will integrate it into the upload endpoint. through an if else
+statement we could check if the file is eligible for single upload or this needs to
+be called. Based on that we could make modifications.
+
+
+It would also be great if someone suggests a way to store the metadata for chunks as well. We
+need those to merge I think.*/
+//----------------------------Undertesting Territory--------------------------------
+const sliceDriveFunction = async (file) => {
+    let temp = 0;
+    let remaining = file.size;
+
+    for (const driveAccount of driveAccounts) {
+        if (remaining <= 0) {
+            break; //File has been uploaded
+        }
+
+        const available = await availableStorage(driveAccount.auth);
+        if (available <= 0) {
+            continue; //Drive is full, onto next drive
+        }
+
+        const sliceSize = Math.min(available, remaining); //chunk size based on available storage
+
+        const sliceStream = fs.createReadStream(file.path, {
+            start: temp,
+            end: temp + sliceSize - 1 //End is inclusive
+        });
+
+        const sliceName = `${file.originalname}-chunk-${temp}-${temp + sliceSize - 1}`;
+
+        const drive = google.drive({ version: 'v3', auth: driveAccount.auth });
+        try {
+            const response = await drive.files.create({
+                requestBody: {
+                    name: sliceName,
+                    mimeType: file.mimetype,
+                    parents: [driveAccount.folderId],
+                },
+                media: {
+                    mimeType: file.mimetype,
+                    body: sliceStream,
+                }
+            });
+            response.send(response.data);
+        } catch (error) {
+            console.error(`Error uploading slice to ${driveAccount.id}:`, error);
+            throw error;
+        }
+
+        //Update the remaining size and temp for next upload
+        temp += sliceSize;
+        remaining -= sliceSize;
+    }
+
+    //No remaining storage available across all drives.
+    if (remaining > 0) {
+        throw new Error("Not enough storage available across all drives to upload the file completely.");
+    }
+};
+
+//----------------------------Undertesting Territory--------------------------------
+
+
+
+
 app.get("/test", (req, res) => {
     res.send("Hello World");
 })
@@ -139,7 +209,7 @@ app.post("/upload", upload.single('file'), async (req, res) => {
     const fileName = file.originalname;
     const fileSize = file.size;
 
-    const driveAccount = await getDriveWithMaxSpace(fileSize);
+    const driveAccount = await getDriveWithSpace(fileSize);
     if (!driveAccount) {
         return res.status(400).send("Not enough storage available on any drive"); //Debugging availability of drive
     }
