@@ -12,7 +12,7 @@ const multer = require("multer");
 const upload = multer({ dest: "uploads/" });
 var admin = require("firebase-admin");
 
-var serviceAccount = require("firestore-credentials-local-path");
+var serviceAccount = require("/Users/shadman/Downloads/firebase_credentials.json");
 
 admin.initializeApp({
     credential: admin.credential.cert(serviceAccount)
@@ -33,6 +33,12 @@ const db = admin.firestore();
 //testing multiple storages
 
 const driveAccounts = [
+    {
+        id: "testDrive",
+        auth: new google.auth.OAuth2("CLIENT_ID", "CLIENT_SECRET", "REDIRECT_URI"),
+        folderId: "FOLDER_ID",
+        access_token: "ACCESS_TOKEN"
+    },
     {
         id: "drive1",
         auth: new google.auth.OAuth2("CLIENT_ID", "CLIENT_SECRET", "REDIRECT_URI"),
@@ -115,29 +121,33 @@ need those to merge I think.*/
 const sliceDriveFunction = async (file) => {
     let temp = 0;
     let remaining = file.size;
+    const chunkUploads = []; // Array to hold metadata for each uploaded chunk
 
+    
     for (const driveAccount of driveAccounts) {
-        if (remaining <= 0) {
-            break; //File has been uploaded
-        }
+        if (remaining <= 0) break; // File has been fully uploaded
 
         const available = await availableStorage(driveAccount.auth);
         if (available <= 0) {
-            continue; //Drive is full, onto next drive
+            continue; // Skip to next drive if no free space
         }
 
-        const sliceSize = Math.min(available, remaining); //chunk size based on available storage
+        
+        const sliceSize = Math.min(available, remaining);
 
+        // Create a read stream for this slice. The "end" is inclusive, so subtract 1.
         const sliceStream = fs.createReadStream(file.path, {
             start: temp,
-            end: temp + sliceSize - 1 //End is inclusive
+            end: temp + sliceSize - 1
         });
 
+        
         const sliceName = `${file.originalname}-chunk-${temp}-${temp + sliceSize - 1}`;
 
+        
         const drive = google.drive({ version: 'v3', auth: driveAccount.auth });
         try {
-            const response = await drive.files.create({
+            const driveResponse = await drive.files.create({
                 requestBody: {
                     name: sliceName,
                     mimeType: file.mimetype,
@@ -148,22 +158,36 @@ const sliceDriveFunction = async (file) => {
                     body: sliceStream,
                 }
             });
-            response.send(response.data);
+
+            // Push metadata for this chunk into the array.
+            chunkUploads.push({
+                driveId: driveAccount.id,
+                googleDrivefileId: driveResponse.data.id,
+                chunkSize: sliceSize,
+                temp: temp,
+                sliceName: sliceName
+            });
         } catch (error) {
-            console.error(`Error uploading slice to ${driveAccount.id}:`, error);
+            console.error(`Error uploading chunk to ${driveAccount.id}:`, error);
             throw error;
         }
 
-        //Update the remaining size and temp for next upload
+        // Update the temp and remaining bytes for the next slice.
         temp += sliceSize;
         remaining -= sliceSize;
     }
 
-    //No remaining storage available across all drives.
     if (remaining > 0) {
-        throw new Error("Not enough storage available across all drives to upload the file completely.");
+        throw new Error("Not enough storage");
     }
+
+
+    return chunkUploads;
 };
+
+
+
+
 
 //----------------------------Undertesting Territory--------------------------------
 
@@ -209,50 +233,76 @@ app.post("/upload", upload.single('file'), async (req, res) => {
     const fileName = file.originalname;
     const fileSize = file.size;
 
+    // Try a simple upload if a single drive has enough space.
     const driveAccount = await getDriveWithSpace(fileSize);
-    if (!driveAccount) {
-        return res.status(400).send("Not enough storage available on any drive"); //Debugging availability of drive
-    }
+    if (driveAccount) {
+        const drive = google.drive({ version: 'v3', auth: driveAccount.auth });
+        try {
+            const response = await drive.files.create({
+                requestBody: {
+                    name: fileName,
+                    mimeType: file.mimetype,
+                    parents: [driveAccount.folderId],
+                },
+                media: {
+                    mimeType: file.mimetype,
+                    body: fs.createReadStream(file.path),
+                }
+            });
 
-    const drive = google.drive({ version: 'v3', auth: driveAccount.auth });
-    try {
-        const response = await drive.files.create({
-            requestBody: {
+            const fileMetaData = {
                 name: fileName,
+                size: fileSize,
+                uploadedAt: new Date().toISOString(),
+                isChunked: false, // Not chunked
+                driveId: driveAccount.id,
+                googleDrivefileId: response.data.id,
                 mimeType: file.mimetype,
-                parents: [driveAccount.folderId],
-            },
-            media: {
+                downloadUrl: `https://drive.google.com/file/d/${response.data.id}/view`
+            };
+
+            await db.collection("files").add(fileMetaData);
+            fs.unlinkSync(file.path); // Clean up local file after upload
+            return res.send(response.data);
+        } catch (err) {
+            console.log(err);
+            return res.status(500).send("Error uploading file");
+        }
+    } else {
+        //06-02-2025
+        /*Integration of the newly made method but facing errors:
+        1. Out of drive storage error
+        2.  Socket hangup error
+        3. Unknown error.
+        
+        I managed to battle 1,3 but cannot understand how to get past 2 for larger files.*/
+        try {
+            const chunkUploads = await sliceDriveFunction(file);
+            const fileMetaData = {
+                name: fileName,
+                size: fileSize,
+                uploadedAt: new Date().toISOString(),
+                isChunked: true, // File was chunked across drives
+                // Store the chunk metadata array if needed:
+                chunks: chunkUploads,
                 mimeType: file.mimetype,
-                body: fs.createReadStream(file.path),
-            }
-        });
+            };
 
-
-        /*If we are tasked with suppose when chunking a file, this snippet might get triggered
-        and the db would have the file name as much times it got chunked. So we need to write our chunking
-        function efficiently in order to avoid this getting called, so that the data gets stored only when
-        we are uploading for the first time, the file itself as a whole. */
-
-
-        const fileMetaData = {
-            name: fileName,
-            size: fileSize,
-            uploadedAt: new Date().toISOString(), //Readable date format
-            isChunked: false, //Kept this, we can use it in future to treat edge cases for demo 1.
-            driveId: driveAccount.id, //We might use this to identify the drive
-            googleDrivefileId: response.data.id,
-            mimeType: file.mimetype,
-            downloadUrl: `https://drive.google.com/file/d/${response.data.id}/view` //We might use this to download the file if it is not chunked.
-        };
-
-        await db.collection("files").add(fileMetaData);
-        fs.unlinkSync(file.path); // Clean up local file after upload
-        res.send(response.data);
-    } catch (err) {
-        console.log(err);
+            await db.collection("files").add(fileMetaData);
+            fs.unlinkSync(file.path);
+            return res.send({
+                message: "File uploaded in chunks across multiple drives.",
+                chunks: chunkUploads
+            });
+        } catch (error) {
+            console.error("Error uploading file in chunks:", error);
+            return res.status(500).send("Error uploading file in chunks");
+        }
     }
-})
+});
+
+
+
 
 
 //Tested working approach to view the file names from firestore.
@@ -412,19 +462,19 @@ app.get("/download", async (req, res) => {
         console.error('Download error:', error);
         res.status(500).send("Internal server error");
     }
-// till this **
+    // till this **
     /*snapshot.forEach(doc => {
         const data = doc.data();
         if (data && data.name) {
             fileNames.push(data.name);
         })*/
-    });
+});
 
-    //request the user to enter a file name.
-    //any other efficient way would be ok.
+//request the user to enter a file name.
+//any other efficient way would be ok.
 
-    //const fileName = req.query.fileName;
-    //use this to check in the array for available files.
+//const fileName = req.query.fileName;
+//use this to check in the array for available files.
 
-    //if the file exists, then download the file.
-})
+//if the file exists, then download the file.
+//})
