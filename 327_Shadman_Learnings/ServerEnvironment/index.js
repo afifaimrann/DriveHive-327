@@ -276,6 +276,12 @@ app.post("/upload", upload.single('file'), async (req, res) => {
         3. Unknown error.
         
         I managed to battle 1,3 but cannot understand how to get past 2 for larger files.*/
+
+
+
+        //07-02-2025
+        /*No breakthroughs today. Trying my absolute best but its always
+        one bug or the other. No pushable or working code today unfortunately. */
         try {
             const chunkUploads = await sliceDriveFunction(file);
             const fileMetaData = {
