@@ -20,18 +20,6 @@ admin.initializeApp({
 
 const db = admin.firestore();
 
-// const auth = new google.auth.OAuth2(
-//     "",
-//     "",
-//     ""
-// );
-
-// auth.setCredentials({ access_token: "" });
-// const folderId = "";
-// const driveId = "suppose1";
-
-//testing multiple storages
-
 const driveAccounts = [
     {
         id: "testDrive",
@@ -56,6 +44,12 @@ const driveAccounts = [
         auth: new google.auth.OAuth2("CLIENT_ID", "CLIENT_SECRET", "REDIRECT_URI"),
         folderId: "FOLDER_ID",
         access_token: "ACCESS_TOKEN"
+    },
+    {
+        id: "drive4",
+        auth: new google.auth.OAuth2("CLIENT_ID", "CLIENT_SECRET", "REDIRECT_URI"),
+        folderId: "FOLDER_ID",
+        access_token: "ACCESS_TOKEN"
     }
 ];
 
@@ -64,7 +58,6 @@ driveAccounts.forEach(drive => {
         access_token: drive.access_token
     });
 });
-
 
 const availableStorage = async (auth) => {
     const drive = google.drive({ version: "v3", auth });
@@ -75,7 +68,6 @@ const availableStorage = async (auth) => {
     const available = total - used;
     return available;
 };
-
 
 const getDriveWithSpace = async (fileSize) => {
     for (const driveAccount of driveAccounts) {
@@ -91,22 +83,19 @@ const getDriveWithSpace = async (fileSize) => {
 //Looking for the drive with the maximum available storage, which could be efficient approach I think. Needs to be tested.
 //Integration to possible new upload endpoint.
 //Maybe we do not use this function as demo 1 requires us to tackle the edge case.
-const getDriveWithMaxSpace = async (fileSize) => {
+const getDriveWithMaxSpace = async (chunkSize) => {
     let candidate = null;
     let maxAvailable = 0;
 
     for (const driveAccount of driveAccounts) {
         const available = await availableStorage(driveAccount.auth);
-        if (fileSize <= available && available > maxAvailable) {
+        if (chunkSize <= available && available > maxAvailable) {
             maxAvailable = available;
             candidate = driveAccount;
         }
     }
     return candidate;
 };
-
-
-
 //05-02-2025
 /*Facing a bug where the file is not getting sliced as it should have. And cannot
 test either until download function is up and running. So keeping this as pause for now.
@@ -117,36 +106,37 @@ be called. Based on that we could make modifications.
 
 It would also be great if someone suggests a way to store the metadata for chunks as well. We
 need those to merge I think.*/
-//----------------------------Undertesting Territory--------------------------------
+
+
+// Modified slicing function: Fixed 100MB chunks for files > 600MB
 const sliceDriveFunction = async (file) => {
-    let temp = 0;
-    let remaining = file.size;
+    const CHUNK = 100 * 1024 * 1024; // 100MB, I think 128MB is the max chunk size for http requests to work well. Read somewhere in stackoverflow.
+    let offset = 0;
+    let chunkIndex = 0;
     const chunkUploads = []; // Array to hold metadata for each uploaded chunk
 
-    
-    for (const driveAccount of driveAccounts) {
-        if (remaining <= 0) break; // File has been fully uploaded
+    while (offset < file.size) {
+        // Determining the current chunk size (last chunk may be smaller)
+        const currentChunkSize = Math.min(CHUNK, file.size - offset);
+        console.log(`Processing chunk ${chunkIndex}: offset ${offset} to ${offset + currentChunkSize - 1} (size: ${currentChunkSize} bytes)`);
 
-        const available = await availableStorage(driveAccount.auth);
-        if (available <= 0) {
-            continue; // Skip to next drive if no free space
+        const driveAccount = await getDriveWithMaxSpace(currentChunkSize);
+        if (!driveAccount) {
+            throw new Error(`Not enough storage available for chunk at offset ${offset}`);
         }
+        console.log(`Using drive account "${driveAccount.id}" for chunk ${chunkIndex}`);
 
-        
-        const sliceSize = Math.min(available, remaining);
-
-        // Create a read stream for this slice. The "end" is inclusive, so subtract 1.
+        //Creating a read stream for the chunk to handle. 
         const sliceStream = fs.createReadStream(file.path, {
-            start: temp,
-            end: temp + sliceSize - 1
+            start: offset,
+            end: offset + currentChunkSize - 1
         });
 
-        
-        const sliceName = `${file.originalname}-chunk-${temp}-${temp + sliceSize - 1}`;
-
-        
+        // Inclusive range, so subtraction of 1 from end.
+        const sliceName = `${file.originalname}-chunk-${chunkIndex}-${offset}-${offset + currentChunkSize - 1}`;
         const drive = google.drive({ version: 'v3', auth: driveAccount.auth });
         try {
+            console.log(`Uploading chunk ${chunkIndex} to drive "${driveAccount.id}"...`);
             const driveResponse = await drive.files.create({
                 requestBody: {
                     name: sliceName,
@@ -158,65 +148,32 @@ const sliceDriveFunction = async (file) => {
                     body: sliceStream,
                 }
             });
+            console.log(`Chunk ${chunkIndex} uploaded successfully. Google Drive File ID: ${driveResponse.data.id}`);
 
-            // Push metadata for this chunk into the array.
+            // Recording metadata for this chunk into an array.
             chunkUploads.push({
                 driveId: driveAccount.id,
                 googleDrivefileId: driveResponse.data.id,
-                chunkSize: sliceSize,
-                temp: temp,
+                chunkSize: currentChunkSize,
+                offset: offset,
                 sliceName: sliceName
             });
         } catch (error) {
-            console.error(`Error uploading chunk to ${driveAccount.id}:`, error);
+            console.error(`Error uploading chunk ${chunkIndex} to drive "${driveAccount.id}":`, error);
             throw error;
         }
 
-        // Update the temp and remaining bytes for the next slice.
-        temp += sliceSize;
-        remaining -= sliceSize;
+        // Pointing to the next chunk.
+        offset += currentChunkSize;
+        chunkIndex++;
     }
-
-    if (remaining > 0) {
-        throw new Error("Not enough storage");
-    }
-
-
-    return chunkUploads;
+    return chunkUploads; // Returning the array.
 };
-
-
-
-
-
-//----------------------------Undertesting Territory--------------------------------
-
-
 
 
 app.get("/test", (req, res) => {
     res.send("Hello World");
-})
-
-// app.get("/available_storage", async(req,res)=>{
-//     const drive = google.drive({version: "v3", auth});
-//     const response = await drive.about.get({fields: "storageQuota"});
-//     const storageQuota = response.data.storageQuota;
-//     const used = parseInt(storageQuota.usageInDrive);
-//     const total = parseInt(storageQuota.limit);
-//     const available = total - used;
-//     res.send({used, total, available});
-// })
-//----------------------------------------------
-// const availableStorage = async () => {
-//     const drive = google.drive({ version: "v3", auth });
-//     const response = await drive.about.get({ fields: "storageQuota" });
-//     const storageQuota = response.data.storageQuota;
-//     const used = parseInt(storageQuota.usageInDrive);
-//     const total = parseInt(storageQuota.limit);
-//     const available = total - used;
-//     return available;
-// }
+});
 
 //31-01-2025
 /*Working approach to uploading files in drive using multer via endpoints.
@@ -228,90 +185,121 @@ drives and to also set up multiple drives. */
 /*A working approach to dynamically upload into multiple drives but it currently
 is happening based on most empty space available. Demo 1 requires us to
 rather slice files when storage is not available. We need to HANDLE SLICING */
+
+
+//06-02-2025
+/*Integration of the newly made method but facing errors:
+1. Out of drive storage error
+2.  Socket hangup error
+3. Unknown error.
+ 
+I managed to battle 1,3 but cannot understand how to get past 2 for larger files.*/
+
+//07-02-2025, 08-02-2025
+/*Modified the upload endpoint to deal with larger file uploads, in chunks. This
+addresses the socket hangup error, timeout errors or storage exhaustion errors. But
+still could not get past the edge case. The last else statement should
+have addressed the edge case, but it still throws any 1 of the 3 errors. specially
+throwing the socket hangup error. */
+
+
 app.post("/upload", upload.single('file'), async (req, res) => {
     const file = req.file;
     const fileName = file.originalname;
     const fileSize = file.size;
+    const CHUNK_LIMIT = 600 * 1024 * 1024; // 600MB in bytes
 
-    // Try a simple upload if a single drive has enough space.
-    const driveAccount = await getDriveWithSpace(fileSize);
-    if (driveAccount) {
-        const drive = google.drive({ version: 'v3', auth: driveAccount.auth });
-        try {
-            const response = await drive.files.create({
-                requestBody: {
-                    name: fileName,
-                    mimeType: file.mimetype,
-                    parents: [driveAccount.folderId],
-                },
-                media: {
-                    mimeType: file.mimetype,
-                    body: fs.createReadStream(file.path),
-                }
-            });
-
-            const fileMetaData = {
-                name: fileName,
-                size: fileSize,
-                uploadedAt: new Date().toISOString(),
-                isChunked: false, // Not chunked
-                driveId: driveAccount.id,
-                googleDrivefileId: response.data.id,
-                mimeType: file.mimetype,
-                downloadUrl: `https://drive.google.com/file/d/${response.data.id}/view`
-            };
-
-            await db.collection("files").add(fileMetaData);
-            fs.unlinkSync(file.path); // Clean up local file after upload
-            return res.send(response.data);
-        } catch (err) {
-            console.log(err);
-            return res.status(500).send("Error uploading file");
-        }
-    } else {
-        //06-02-2025
-        /*Integration of the newly made method but facing errors:
-        1. Out of drive storage error
-        2.  Socket hangup error
-        3. Unknown error.
-        
-        I managed to battle 1,3 but cannot understand how to get past 2 for larger files.*/
-
-
-
-        //07-02-2025
-        /*No breakthroughs today. Trying my absolute best but its always
-        one bug or the other. No pushable or working code today unfortunately. */
+    if (fileSize > CHUNK_LIMIT) {
+        console.log(`Initiating chunked upload...`);
         try {
             const chunkUploads = await sliceDriveFunction(file);
             const fileMetaData = {
                 name: fileName,
                 size: fileSize,
                 uploadedAt: new Date().toISOString(),
-                isChunked: true, // File was chunked across drives
-                // Store the chunk metadata array if needed:
-                chunks: chunkUploads,
+                isChunked: true,
+                chunks: chunkUploads, // Array of metadata, stored to streamline downloads
                 mimeType: file.mimetype,
             };
 
             await db.collection("files").add(fileMetaData);
             fs.unlinkSync(file.path);
+            console.log(`Chunked upload completed for "${fileName}".`);
             return res.send({
-                message: "File uploaded in chunks across multiple drives.",
+                message: "File uploaded success in chunks.",
                 chunks: chunkUploads
             });
         } catch (error) {
-            console.error("Error uploading file in chunks:", error);
+            console.error("Error during chunked upload:", error);
             return res.status(500).send("Error uploading file in chunks");
+        }
+    } else {
+        //Simple upload logic. Basically any file < 600MB
+        console.log(`Initiating simple upload...`);
+        const driveAccount = await getDriveWithSpace(fileSize); //tested with getDriveWithSpace
+        if (driveAccount) {
+            const drive = google.drive({ version: 'v3', auth: driveAccount.auth });
+            try {
+                const response = await drive.files.create({
+                    requestBody: {
+                        name: fileName,
+                        mimeType: file.mimetype,
+                        parents: [driveAccount.folderId],
+                    },
+                    media: {
+                        mimeType: file.mimetype,
+                        body: fs.createReadStream(file.path),
+                    }
+                });
+
+                const fileMetaData = {
+                    name: fileName,
+                    size: fileSize,
+                    uploadedAt: new Date().toISOString(),
+                    isChunked: false,
+                    driveId: driveAccount.id,
+                    googleDrivefileId: response.data.id,
+                    mimeType: file.mimetype,
+                    downloadUrl: `https://drive.google.com/file/d/${response.data.id}/view`
+                };
+
+                await db.collection("files").add(fileMetaData);
+                fs.unlinkSync(file.path); // Cleaning the temporary file created to read or write.
+                console.log(`Simple upload completed for "${fileName}" using drive "${driveAccount.id}".`);
+                return res.send(response.data);
+            } catch (err) {
+                console.error("Error during simple upload:", err);
+                return res.status(500).send("Error uploading file");
+            }
+        } else {
+            //Edge case handler which does not seem to work, but kept it nonetheless.
+            console.log(`Edge case trigger`);
+            try {
+                const chunkUploads = await sliceDriveFunction(file);
+                const fileMetaData = {
+                    name: fileName,
+                    size: fileSize,
+                    uploadedAt: new Date().toISOString(),
+                    isChunked: true,
+                    chunks: chunkUploads,
+                    mimeType: file.mimetype,
+                };
+
+                await db.collection("files").add(fileMetaData);
+                fs.unlinkSync(file.path);
+                console.log(`Success edge case trigger`);
+                return res.send({
+                    chunks: chunkUploads
+                });
+            } catch (error) {
+                console.error(error);
+                return res.status(500).send("Error uploading file in chunks");
+            }
         }
     }
 });
 
-
-
-
-
-//Tested working approach to view the file names from firestore.
+// Endpoint to list files (metadata retrieval)
 app.get("/files", async (req, res) => {
     try {
         const snapshot = await db.collection("files").get();
@@ -331,82 +319,20 @@ app.get("/files", async (req, res) => {
     }
 });
 
-
-
 app.listen(3000, () => {
     console.log(`Server is running on port 3000`);
-})
+});
 
-//----------------------------UNTESTED CODE--------------------------------------------
-
-//03-02-2025
-//Took the code from Satavisa's files. Will work around these to hopefully integrate the downloading of files.
-const fetchFilesFromDrive = async (driveClient) => {
-    try {
-        const response = await driveClient.files.list({
-            pageSize: 100, // fetches up to 100 files
-            fields: 'files(id, name, mimeType, size, modifiedTime, parents)',
-        });
-        return response.data.files;
-    } catch (error) {
-        console.error('Error fetching files:', error);
-        return [];
-    }
-};
-
-
-// **Function to merge files 
-const mergeStorage = async (req, res) => {
-    try {
-        const userId = req.user.id;
-        const user = await user.findById(userId);
-
-        if (!user || !user.driveAccounts || user.driveAccounts.length === 0) {
-            return res.status(400).json({ message: 'No linked Google Drive accounts.' });
-        }
-
-        let allFiles = [];
-
-        for (const account of user.driveAccounts) {
-            const driveClient = driveClient(account.accessToken);
-            const files = await fetchFilesFromDrive(driveClient);
-
-            allFiles = [...allFiles, ...files.map(file => ({
-                ...file,
-                driveAccount: account.email,
-            }))];
-        }
-
-        res.json({ files: allFiles });
-    } catch (error) {
-        console.error('Error merging storage:', error);
-        res.status(500).json({ message: 'Server error' });
-    }
-};
-
-//----------------------------UNTESTED CODE--------------------------------------------
-
-
-
-//----------------------------Further works---------------------------//
-const getDriveWithSpace2 = async (fileSize) => {
-    for (const driveAccount of driveAccounts) {
-        const available = await availableStorage(driveAccount.auth);
-        if (fileSize <= available) {
-            return driveAccount;
-        }
-    }
-    return null;
-};
-
-//-----------------------------Further works---------------------------//
-
-
+//08-02-25
+/*Added to Satavisa and Afifa's existing logic, to handle download of chunked files.
+Mostly the logic is the same, just checkes the field inChunks, if true, handles the download
+by sorting the chunks subarray according to their bytes offset. Later leverages the googleDriveFolderID 
+to track the file location using files.get method, then downloads the file in that location.
+It later, "pipes" the chunk into the response stream, wont complete until all chunks from chunks array
+have been iterated, got using get method. Later, the promise is resolved to complete the 
+http request, with all the contents of the file loaded into the stream, ready for download.*/
 
 app.get("/download", async (req, res) => {
-    const fileNames = [];
-    //reuse this from files endpoint
-    // for both chunked & non-chunked file
     const fileName = req.query.fileName;
     if (!fileName) {
         return res.status(400).send("fileName query parameter is required");
@@ -426,55 +352,96 @@ app.get("/download", async (req, res) => {
         const fileDoc = snapshot.docs[0];
         const fileData = fileDoc.data();
 
-        // handle chunked files
+        // Setting the response headers so that the client treats the response as a file download.
+        res.setHeader('Content-Disposition', `attachment; filename="${fileData.name}"`);
+        res.setHeader('Content-Type', fileData.mimeType);
+        res.setHeader('Content-Length', fileData.size);
+
         if (fileData.isChunked) {
-            return res.status(501).send("Chunked file download not yet implemented");
+            console.log(`Initiating download for chunked file "${fileData.name}"`);
+
+            // Sorting chunks by offset to reassemble in the correct order.
+            const sortedChunks = fileData.chunks.sort((a, b) => {
+                if (a.offset < b.offset) {
+                    return -1;
+                } else if (a.offset > b.offset) {
+                    return 1;
+                } else {
+                    return 0;
+                }
+            });
+
+            // Iterating over each chunk sequentially.
+            for (const chunk of sortedChunks) {
+                let driveAccount;
+                for (const account of driveAccounts) {
+                    if (account.id === chunk.driveId) {
+                        driveAccount = account;
+                        break;
+                    }
+                }
+
+                if (!driveAccount) {
+                    return res.status(500).send("Associated Drive account not found for a chunk");
+                }
+
+                const drive = google.drive({ version: 'v3', auth: driveAccount.auth });
+                console.log(`Downloading chunk "${chunk.sliceName}" from drive "${driveAccount.id}"`);
+
+                // Getting the stream for the current chunk from Google Drive.
+                const chunkStreamResponse = await drive.files.get({
+                    fileId: chunk.googleDrivefileId,
+                    alt: 'media'
+                }, { responseType: 'stream' });
+
+                // Piping the chunk stream into the response stream.
+                await new Promise((resolve, reject) => {
+                    chunkStreamResponse.data
+                        .on('end', () => {
+                            console.log(`Finished downloading chunk "${chunk.sliceName}"`);
+                            resolve();
+                        })
+                        .on('error', (err) => {
+                            console.error(`Error streaming chunk "${chunk.sliceName}":`, err);
+                            reject(err);
+                        })
+                        .pipe(res, { end: false });
+                });
+            }
+            // End the response after all chunks have been streamed.
+            res.end();
+        } else {
+            console.log(`Initiating download for unchunked file "${fileData.name}"`);
+
+            // find the corresponding drive account
+            const driveAccount = driveAccounts.find(d => d.id === fileData.driveId);
+            if (!driveAccount) {
+                return res.status(500).send("Associated Drive account not found");
+            }
+
+            // initialize Google Drive client
+            const drive = google.drive({ version: 'v3', auth: driveAccount.auth });
+            console.log(`Downloading file from drive "${driveAccount.id}"`);
+
+            // Stream the file from Google Drive
+            const response = await drive.files.get({
+                fileId: fileData.googleDrivefileId,
+                alt: 'media'
+            }, { responseType: 'stream' });
+
+            response.data
+                .on('error', err => {
+                    console.error('Error streaming file:', err);
+                    res.status(500).end();
+                })
+                .pipe(res);
         }
-
-        // find the corresponding drive account
-        const driveAccount = driveAccounts.find(d => d.id === fileData.driveId);
-        if (!driveAccount) {
-            return res.status(500).send("Associated Drive account not found");
-        }
-
-        // initialize Google Drive client
-        const drive = google.drive({ version: 'v3', auth: driveAccount.auth });
-
-        // get file from Google Drive
-        const fileMeta = await drive.files.get({
-            fileId: fileData.googleDrivefileId,
-            fields: 'id, name, mimeType, size'
-        });
-
-        // Set response headers
-        res.setHeader('Content-Disposition', `attachment; filename="${fileMeta.data.name}"`);
-        res.setHeader('Content-Type', fileMeta.data.mimeType);
-        res.setHeader('Content-Length', fileMeta.data.size);
-
-        // Stream the file from Google Drive
-        const response = await drive.files.get({
-            fileId: fileData.googleDrivefileId,
-            alt: 'media'
-        }, { responseType: 'stream' });
-
-        response.data
-            .on('error', err => {
-                console.error('Error streaming file:', err);
-                res.status(500).end();
-            })
-            .pipe(res);
-
     } catch (error) {
         console.error('Download error:', error);
         res.status(500).send("Internal server error");
     }
-    // till this **
-    /*snapshot.forEach(doc => {
-        const data = doc.data();
-        if (data && data.name) {
-            fileNames.push(data.name);
-        })*/
 });
+
 
 //request the user to enter a file name.
 //any other efficient way would be ok.
@@ -484,3 +451,4 @@ app.get("/download", async (req, res) => {
 
 //if the file exists, then download the file.
 //})
+
