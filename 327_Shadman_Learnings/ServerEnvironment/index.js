@@ -226,7 +226,7 @@ app.post("/upload", upload.single('file'), async (req, res) => {
             fs.unlinkSync(file.path);
             console.log(`Chunked upload completed for "${fileName}".`);
             return res.send({
-                message: "File uploaded success in chunks.",
+                message: "File upload success in chunks.",
                 chunks: chunkUploads
             });
         } catch (error) {
@@ -235,7 +235,7 @@ app.post("/upload", upload.single('file'), async (req, res) => {
         }
     } else {
         //Simple upload logic. Basically any file < 600MB
-        console.log(`Initiating simple upload...`);
+        console.log(`Initiating simple upload`);
         const driveAccount = await getDriveWithSpace(fileSize); //tested with getDriveWithSpace
         if (driveAccount) {
             const drive = google.drive({ version: 'v3', auth: driveAccount.auth });
@@ -293,7 +293,7 @@ app.post("/upload", upload.single('file'), async (req, res) => {
                 });
             } catch (error) {
                 console.error(error);
-                return res.status(500).send("Error uploading file in chunks");
+                return res.status(500).send("Error edge case trigger");
             }
         }
     }
@@ -408,7 +408,7 @@ app.get("/download", async (req, res) => {
                         .pipe(res, { end: false });
                 });
             }
-            // End the response after all chunks have been streamed.
+            // Ending the response after all chunks have been streamed.
             res.end();
         } else {
             console.log(`Initiating download for unchunked file "${fileData.name}"`);
