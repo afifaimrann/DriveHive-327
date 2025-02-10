@@ -4,6 +4,10 @@ planning on doing the slicing of the files in the frontend and backend will
 just upload the sliced files. For now, these are my thoughts. Feel free to 
 make or suggest changes. */
 
+
+//Existing bug where upload for more than 1.5GB files is not working
+
+
 const express = require("express");
 const app = express();
 const fs = require("fs");
@@ -116,7 +120,7 @@ const sliceDriveFunction = async (file) => {
     const chunkUploads = []; // Array to hold metadata for each uploaded chunk
 
     while (offset < file.size) {
-        // Determining the current chunk size (last chunk may be smaller)
+        // Checking if the current chunk size exceeds the remaining file size
         const currentChunkSize = Math.min(CHUNK, file.size - offset);
         console.log(`Processing chunk ${chunkIndex}: offset ${offset} to ${offset + currentChunkSize - 1} (size: ${currentChunkSize} bytes)`);
 
@@ -136,7 +140,7 @@ const sliceDriveFunction = async (file) => {
         const sliceName = `${file.originalname}-chunk-${chunkIndex}-${offset}-${offset + currentChunkSize - 1}`;
         const drive = google.drive({ version: 'v3', auth: driveAccount.auth });
         try {
-            console.log(`Uploading chunk ${chunkIndex} to drive "${driveAccount.id}"...`);
+            console.log(`Uploading chunk ${chunkIndex} to drive "${driveAccount.id}"`);
             const driveResponse = await drive.files.create({
                 requestBody: {
                     name: sliceName,
@@ -442,13 +446,237 @@ app.get("/download", async (req, res) => {
     }
 });
 
+//Work beyond project update 1
 
-//request the user to enter a file name.
-//any other efficient way would be ok.
 
-//const fileName = req.query.fileName;
-//use this to check in the array for available files.
 
-//if the file exists, then download the file.
-//})
+//10-02-2025
+/*Today worked on the delete and the update endpoints. The delete endpoint is just a carbon
+copy of the upload endpoint, it's just different API calls and removal of metadata from
+firestore db.
 
+
+The preview endpoint has still not been reviewed for multiple drive uploads, since struggling to find a 600+ MB
+worth file which is readable and not just binary or machine code mumbo jumbo*/
+
+app.delete("/delete", async (req, res) => {
+    const fileName = req.query.fileName;
+    if (!fileName) {
+        return res.status(400).send("fileName query parameter is required");
+    }
+
+    try {
+        const snapshot = await db.collection("files")
+            .where("name", "==", fileName)
+            .get();
+
+        if (snapshot.empty) {
+            return res.status(404).send("File not found");
+        }
+
+        const fileDoc = snapshot.docs[0];
+        const fileData = fileDoc.data();
+
+        if (fileData.isChunked) {
+            console.log(`Deleting ${fileData.chunks.length} chunks for ${fileName}`);
+            
+            const deletePromises = fileData.chunks.map(async (chunk) => {
+
+                let driveAccount;
+                for (const account of driveAccounts) {
+                    if (account.id === chunk.driveId) {
+                        driveAccount = account;
+                        break;
+                    }
+                }
+
+                if (!driveAccount) {
+                    console.error(`Drive account ${chunk.driveId} not found for chunk ${chunk.sliceName}`);
+                    return;
+                }
+
+                try {
+                    const drive = google.drive({ version: 'v3', auth: driveAccount.auth });
+                    await drive.files.delete({
+                        fileId: chunk.googleDrivefileId
+                    });
+                    console.log(`Deleted chunk ${chunk.sliceName} from ${chunk.driveId}`);
+                } catch (error) {
+                    console.error(`Failed to delete chunk ${chunk.sliceName}:`, error.message);
+                    throw error; 
+                }
+            });
+
+            await Promise.all(deletePromises);
+        } else {
+            console.log("Initiating non chunked delete");
+            let driveAccount;
+            for (const account of driveAccounts) {
+                if (account.id === chunk.driveId) {
+                    driveAccount = account;
+                    break;
+                }
+            }
+            if (!driveAccount) {
+                return res.status(500).send("Associated Drive account not found");
+            }
+
+            const drive = google.drive({ version: 'v3', auth: driveAccount.auth });
+            await drive.files.delete({
+                fileId: fileData.googleDrivefileId
+            });
+            console.log(`Deleted single file ${fileName} from ${fileData.driveId}`);
+        }
+
+        await fileDoc.ref.delete();
+        console.log(`Removed ${fileName} metadata from Firestore`);
+
+        res.send({
+            message: "File deleted successfully",
+            fileName: fileName,
+            chunksDeleted: fileData.isChunked ? fileData.chunks.length : 0
+        });
+
+    } catch (error) {
+        console.error("Delete error:", error);
+        res.status(500).send({
+            error: "Deletion failed",
+            message: error.message,
+            fileName: fileName
+        });
+    }
+});
+
+//-----------------------------------------UNDER TESTING---------------------------------------------------
+
+
+//Function to create a readable stream into a buffer, to preview on the client side.
+const streamToBuffer = (stream) => {
+    return new Promise((resolve, reject) => {
+        const chunks = [];
+        stream.on('data', (chunk) => chunks.push(chunk));
+        stream.on('end', () => resolve(Buffer.concat(chunks)));
+        stream.on('error', (err) => reject(err));
+    });
+};
+
+app.get("/preview", async (req, res) => {
+    const fileName = req.query.fileName;
+    const PREVIEW_SIZE = 1 * 1024 * 1024; // 1MB preview size
+
+    if (!fileName) {
+        return res.status(400).send("fileName query parameter is required");
+    }
+
+    try {
+        // Querying Firestore for the file metadata
+        const snapshot = await db.collection("files")
+            .where("name", "==", fileName)
+            .get();
+
+        if (snapshot.empty) {
+            return res.status(404).send("File not found");
+        }
+
+        
+        const fileDoc = snapshot.docs[0];
+        const fileData = fileDoc.data();
+
+        // Letting the browser handle the preview
+        res.setHeader('Content-Disposition', `inline; filename="${fileData.name}"`);
+        res.setHeader('Content-Type', fileData.mimeType);
+
+        
+        if (fileData.isChunked) {
+            console.log(`Generating preview for chunked file "${fileData.name}"`);
+
+            const sortedChunks = fileData.chunks.sort((a, b) => {
+                if (a.offset < b.offset) {
+                    return -1;
+                } else if (a.offset > b.offset) {
+                    return 1;
+                } else {
+                    return 0;
+                }
+            });
+
+            let bytesCollected = 0;
+            let previewBuffers = [];
+
+            for (const chunk of sortedChunks) {
+                if (bytesCollected >= PREVIEW_SIZE) break;
+
+                // Locating the corresponding drive account for this chunk
+                let driveAccount;
+                for (const account of driveAccounts) {
+                    if (account.id === chunk.driveId) {
+                        driveAccount = account;
+                        break;
+                    }
+                }
+                if (!driveAccount) {
+                    return res.status(500).send("Associated Drive account not found for a chunk");
+                }
+
+                const drive = google.drive({ version: 'v3', auth: driveAccount.auth });
+                console.log(`Downloading chunk "${chunk.sliceName}" from drive "${driveAccount.id}"`);
+
+                // Retrieving the chunk as a stream from Google Drive
+                const driveResponse = await drive.files.get({
+                    fileId: chunk.googleDrivefileId,
+                    alt: 'media'
+                }, { responseType: 'stream' });
+
+                // Converting the stream into a Buffer
+                let chunkBuffer = await streamToBuffer(driveResponse.data);
+
+                //Trimming the buffer if it exceeds the remaining preview size
+                const bytesNeeded = PREVIEW_SIZE - bytesCollected;
+                if (chunkBuffer.length > bytesNeeded) {
+                    chunkBuffer = chunkBuffer.slice(0, bytesNeeded);
+                }
+                previewBuffers.push(chunkBuffer);
+                bytesCollected += chunkBuffer.length;
+            }
+
+            // Single preview Buffer
+            const previewData = Buffer.concat(previewBuffers, bytesCollected);
+            res.setHeader('Content-Length', bytesCollected);
+            return res.send(previewData);
+        } else {
+            // For non-chunked files
+            console.log(`Generating preview for simple file "${fileData.name}"`);
+
+            let driveAccount;
+            for (const account of driveAccounts) {
+                if (account.id === fileData.driveId) {
+                    driveAccount = account;
+                    break;
+                }
+            }
+
+            if (!driveAccount) {
+                return res.status(500).send("Associated Drive account not found");
+            }
+            const drive = google.drive({ version: 'v3', auth: driveAccount.auth });
+            
+            // Attempting to fetch the file stream
+            const driveResponse = await drive.files.get({
+                fileId: fileData.googleDrivefileId,
+                alt: 'media'
+            }, { responseType: 'stream' });
+
+            // Converting the stream to a Buffer and slice the preview portion
+            let fileBuffer = await streamToBuffer(driveResponse.data);
+            let previewData = fileBuffer.slice(0, Math.min(PREVIEW_SIZE, fileBuffer.length));
+            res.setHeader('Content-Length', previewData.length);
+            return res.send(previewData);
+        }
+    } catch (error) {
+        console.error('Preview error:', error);
+        return res.status(500).send("Internal server error");
+    }
+});
+
+
+//-----------------------------------------UNDER TESTING---------------------------------------------------
