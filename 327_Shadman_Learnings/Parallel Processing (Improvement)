@@ -1,0 +1,16 @@
+const getDriveWithSpace = async (fileSize) => {
+    // Step 1: maps each drive account to a promise that checks available storage
+    const spaceChecks = driveAccounts.map(async (driveAccount) => {
+        const available = await availableStorage(driveAccount.auth); // Check storage
+        return { driveAccount, available }; // Return the drive and its available space
+    });
+
+    // Step 2: Wait for all promises to finish (i.e., check storage for all drives in parallel)
+    const results = await Promise.all(spaceChecks);
+    
+    // Step 3: Find the first drive that has enough available space
+    const availableDrive = results.find(result => fileSize <= result.available);
+    
+    // Step 4: returns the found drive, or null if no drive has enough space
+    return availableDrive ? availableDrive.driveAccount : null;
+};
