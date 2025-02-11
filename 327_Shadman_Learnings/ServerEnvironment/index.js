@@ -15,6 +15,7 @@ const { google } = require("googleapis");
 const multer = require("multer");
 const upload = multer({ dest: "uploads/" });
 var admin = require("firebase-admin");
+const Dropbox = require("dropbox").Dropbox;
 
 var serviceAccount = require("/Users/shadman/Downloads/firebase_credentials.json");
 
@@ -196,7 +197,7 @@ rather slice files when storage is not available. We need to HANDLE SLICING */
 1. Out of drive storage error
 2.  Socket hangup error
 3. Unknown error.
- 
+
 I managed to battle 1,3 but cannot understand how to get past 2 for larger files.*/
 
 //07-02-2025, 08-02-2025
@@ -323,9 +324,7 @@ app.get("/files", async (req, res) => {
     }
 });
 
-app.listen(3000, () => {
-    console.log(`Server is running on port 3000`);
-});
+
 
 //08-02-25
 /*Added to Satavisa and Afifa's existing logic, to handle download of chunked files.
@@ -479,7 +478,7 @@ app.delete("/delete", async (req, res) => {
 
         if (fileData.isChunked) {
             console.log(`Deleting ${fileData.chunks.length} chunks for ${fileName}`);
-            
+
             const deletePromises = fileData.chunks.map(async (chunk) => {
 
                 let driveAccount;
@@ -503,7 +502,7 @@ app.delete("/delete", async (req, res) => {
                     console.log(`Deleted chunk ${chunk.sliceName} from ${chunk.driveId}`);
                 } catch (error) {
                     console.error(`Failed to delete chunk ${chunk.sliceName}:`, error.message);
-                    throw error; 
+                    throw error;
                 }
             });
 
@@ -578,7 +577,7 @@ app.get("/preview", async (req, res) => {
             return res.status(404).send("File not found");
         }
 
-        
+
         const fileDoc = snapshot.docs[0];
         const fileData = fileDoc.data();
 
@@ -586,7 +585,7 @@ app.get("/preview", async (req, res) => {
         res.setHeader('Content-Disposition', `inline; filename="${fileData.name}"`);
         res.setHeader('Content-Type', fileData.mimeType);
 
-        
+
         if (fileData.isChunked) {
             console.log(`Generating preview for chunked file "${fileData.name}"`);
 
@@ -659,7 +658,7 @@ app.get("/preview", async (req, res) => {
                 return res.status(500).send("Associated Drive account not found");
             }
             const drive = google.drive({ version: 'v3', auth: driveAccount.auth });
-            
+
             // Attempting to fetch the file stream
             const driveResponse = await drive.files.get({
                 fileId: fileData.googleDrivefileId,
@@ -680,3 +679,67 @@ app.get("/preview", async (req, res) => {
 
 
 //-----------------------------------------UNDER TESTING---------------------------------------------------
+
+
+
+//------------------------------------------DROPBOX TERRITORY------------------------------------------------
+//11-02-2025
+/*Working uploads and downloads on a single file using dropbox. Today just figured out how
+to integrate api's of dropbox,  fairly easier than google drive to be honest. You just 
+need the API key and no refresh mumbo jumbo. Sleek.
+
+Also, these uploads and downloads are simply raw to dropbox, these need to be figured out
+for multiple dropboxes, then merged with the existing upload and download endpoints as one.
+The user should not be able to see anything that goes down in the backend. Integration with
+firestore necessary as well, which should be fairly easy.*/
+
+const dbx = new Dropbox({ accessToken: "ACCESS_TOKEN" });
+app.post('/dropboxUpload', upload.single('file'), async (req, res) => {
+    const file = req.file;
+    const dropBoxPath = `/${file.originalname}`;
+
+
+    const fileContent = fs.readFileSync(file.path); //dropbox for some reason won't accept a steam.
+
+    dbx.filesUpload({
+        path: dropBoxPath,
+        contents: fileContent,
+        mode: { '.tag': 'overwrite' }
+    }).then((response) => {
+        //console.log(response);
+        res.send("File uploaded successfully");
+    })
+        .catch((error) => {
+            console.error(error);
+            res.status(500).send("Error uploading file");
+        });
+});
+
+
+//Working single small file download endpoint, needs to be integrated with the main download endpoint. Also changes for distributed file (drop box) systems needed.
+//http://localhost:3000/dropboxDownload?fileName=THEFILENAME use this sort of structure in browser to download files.
+app.get('/dropboxDownload', async (req, res) => {
+    const fileName = req.query.fileName;
+    if (!fileName) {
+        return res.status(400).send("Missing fileName query parameter");
+    }
+
+    const dropBoxPath = `/${fileName}`;
+    
+    try {
+        const response = await dbx.filesDownload({ path: dropBoxPath });
+        res.setHeader('Content-Disposition', `attachment; filename="${response.result.name}"`);
+        res.setHeader('Content-Type', 'application/octet-stream');
+        res.send(response.result.fileBinary);
+    } catch (error) {
+        console.error("Error downloading file:", error);
+        res.status(500).send("Error downloading file");
+    }
+});
+
+
+//------------------------------------------DROPBOX TERRITORY------------------------------------------------
+
+app.listen(3000, () => {
+    console.log(`Server is running on port 3000`);
+});
