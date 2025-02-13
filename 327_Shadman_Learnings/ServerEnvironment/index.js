@@ -16,6 +16,7 @@ const multer = require("multer");
 const upload = multer({ dest: "uploads/" });
 var admin = require("firebase-admin");
 const Dropbox = require("dropbox").Dropbox;
+const fetch = require('node-fetch'); 
 
 var serviceAccount = require("/Users/shadman/Downloads/firebase_credentials.json");
 
@@ -740,6 +741,88 @@ app.get('/dropboxDownload', async (req, res) => {
 
 //------------------------------------------DROPBOX TERRITORY------------------------------------------------
 
+
+//------------------------------------------ONEDRIVE TERRITORY------------------------------------------------
+
+//13-02-2025
+/*Testing for onedrive features. As it seems, generating accesstoken for using microsoft api is
+a huge hassle, it almost feels like Azure is a paid software. So not really sure how would
+I be handling that. But wrote these almost similar endpoints for download and upload, taking inspiration from github, stackoverflow.
+If anyone can figure out access token issue, feel free to let me know. */
+
+app.post('/onedriveUpload', upload.single('file'), async (req, res) => {
+  try {
+    const file = req.file;
+    if (!file) {
+      return res.status(400).send('No file uploaded');
+    }
+    
+    const fileContent = fs.readFileSync(file.path);
+    
+    const oneDrivePath = `/drive/root:/${file.originalname}:/content`;
+    
+    const accessToken = "YOUR_ACCESS_TOKEN";
+    
+    const response = await fetch(`https://graph.microsoft.com/v1.0${oneDrivePath}`, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': file.mimetype || 'application/octet-stream'
+      },
+      body: fileContent
+    });
+    
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error('Error uploading file:', errText);
+      return res.status(response.status).send("Error uploading file to OneDrive");
+    }
+    
+    const jsonResponse = await response.json();
+    res.send("File uploaded successfully to OneDrive");
+    
+  } catch (err) {
+    console.error("Upload error:", err);
+    res.status(500).send("Internal server error");
+  }
+});
+
+
+app.get('/onedriveDownload', async (req, res) => {
+  const fileName = req.query.fileName;
+  if (!fileName) {
+    return res.status(400).send('Missing fileName query parameter');
+  }
+
+  const accessToken = "YOUR_ACCESS_TOKEN"; 
+  const oneDrivePath = `/drive/root:/${encodeURIComponent(fileName)}:/content`;
+  const url = `https://graph.microsoft.com/v1.0${oneDrivePath}`;
+
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`
+      }
+    });
+    
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error('Error downloading file:', errText);
+      return res.status(response.status).send(errText);
+    }
+
+    res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+    
+    response.body.pipe(res);
+  } catch (error) {
+    console.error("Download endpoint error:", error);
+    res.status(500).send("Internal server error while downloading the file");
+  }
+});
+
+
+//------------------------------------------ONEDRIVE TERRITORY------------------------------------------------
 app.listen(3000, () => {
     console.log(`Server is running on port 3000`);
 });
