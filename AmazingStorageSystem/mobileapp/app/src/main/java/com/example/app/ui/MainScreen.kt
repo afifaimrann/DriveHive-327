@@ -84,3 +84,81 @@ fun FeatureButton(icon: Int, text: String, onClick: () -> Unit) {
         }
     }
 }
+@Composable
+fun Sidebar(
+    fullName: String,
+    avatar: Int,
+    email: String,
+    navController: NavController
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxHeight()
+            .width(260.dp)
+            .background(Color(0xFF1E1E1E)) 
+            .padding(16.dp),
+        verticalArrangement = Arrangement.SpaceBetween
+    ) {
+        // App Logo
+        Image(
+            painter = painterResource(id = R.drawable.logo_full),
+            contentDescription = "StoreIt Logo",
+            modifier = Modifier
+                .width(160.dp)
+                .height(50.dp)
+        )
+
+        // Navigation Items
+        Column {
+            navItems.forEach { item ->
+                SidebarNavItem(
+                    name = item.name,
+                    icon = item.icon,
+                    isSelected = navController.currentBackStackEntry?.destination?.route == item.url,
+                    onClick = { navController.navigate(item.url) }
+                )
+            }
+        }
+
+        // User Info
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Image(
+                painter = painterResource(id = avatar),
+                contentDescription = "User Avatar",
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .border(2.dp, Color.White, CircleShape)
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(text = fullName, color = Color.White, fontWeight = FontWeight.Bold)
+            Text(text = email, color = Color.Gray, fontSize = 12.sp)
+        }
+    }
+}
+
+// Navigation Item
+@Composable
+fun SidebarNavItem(name: String, icon: Int, isSelected: Boolean, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp)
+            .clickable { onClick() }
+            .background(if (isSelected) Color(0xFF252525) else Color.Transparent),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            painter = painterResource(id = icon),
+            contentDescription = name,
+            tint = if (isSelected) Color.White else Color.Gray,
+            modifier = Modifier.size(24.dp)
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        Text(
+            text = name,
+            color = if (isSelected) Color.White else Color.Gray,
+            fontSize = 16.sp
+        )
+    }
+}
