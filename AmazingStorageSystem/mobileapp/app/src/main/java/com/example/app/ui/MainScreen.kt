@@ -162,3 +162,35 @@ fun SidebarNavItem(name: String, icon: Int, isSelected: Boolean, onClick: () -> 
         )
     }
 }
+@Composable
+fun Thumbnail(
+    type: String,
+    extension: String,
+    url: String? = null,
+    imageModifier: Modifier = Modifier.size(32.dp),
+    modifier: Modifier = Modifier
+) {
+    val isImage = type == "image" && extension != "svg"
+    val imageSource = if (isImage && !url.isNullOrEmpty()) {
+        url
+    } else {
+        getFileIcon(extension, type) // funtion is yet to write
+    }
+
+    Box(modifier = modifier) {
+        if (isImage && !url.isNullOrEmpty()) {
+            AsyncImage(
+                model = imageSource,
+                contentDescription = "Thumbnail",
+                modifier = imageModifier.clip(RoundedCornerShape(8.dp)),
+                contentScale = ContentScale.Crop
+            )
+        } else {
+            Image(
+                painter = painterResource(id = getFileIconResource(extension, type)),
+                contentDescription = "File Thumbnail",
+                modifier = imageModifier
+            )
+        }
+    }
+}
