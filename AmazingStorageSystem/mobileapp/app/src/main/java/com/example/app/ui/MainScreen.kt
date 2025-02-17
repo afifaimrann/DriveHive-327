@@ -85,6 +85,104 @@ fun FeatureButton(icon: Int, text: String, onClick: () -> Unit) {
     }
 }
 @Composable
+fun AuthForm(navController: NavController, formType: FormType) {
+    var fullName by rememberSaveable { mutableStateOf("") }
+    var email by rememberSaveable { mutableStateOf("") }
+    var isLoading by rememberSaveable { mutableStateOf(false) }
+    var errorMessage by rememberSaveable { mutableStateOf("") }
+
+    val isSignUp = formType == FormType.SignUp
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = if (isSignUp) "Sign-Up" else "Sign-In",
+            fontSize = 24.sp,
+            fontWeight = FontWeight.Bold
+        )
+
+        if (isSignUp) {
+            OutlinedTextField(
+                value = fullName,
+                onValueChange = { fullName = it },
+                label = { Text("Full Name") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+
+        OutlinedTextField(
+            value = email,
+            onValueChange = { email = it },
+            label = { Text("Email") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email)
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Button(
+            onClick = {
+                isLoading = true
+                if (isSignUp && fullName.length < 2) {
+                    errorMessage = "Full name must be at least 2 characters"
+                    isLoading = false
+                    return@Button
+                }
+                if (!isValidEmail(email)) {
+                    errorMessage = "Invalid email format"
+                    isLoading = false
+                    return@Button
+                }
+                //authentication logic
+                isLoading = false
+            },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !isLoading
+        ) {
+            Text(if (isSignUp) "Sign-Up" else "Sign-In")
+            if (isLoading) {
+                Spacer(modifier = Modifier.width(8.dp))
+                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+            }
+        }
+
+        if (errorMessage.isNotEmpty()) {
+            Text(text = "*$errorMessage", color = Color.Red, fontSize = 14.sp)
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Row {
+            Text(text = if (isSignUp) "Already have an account?" else "Don't have an account?")
+            TextButton(onClick = {
+                navController.navigate(if (isSignUp) "sign-in" else "sign-up")
+            }) {
+                Text(
+                    text = if (isSignUp) "Sign-In" else "Sign-Up",
+                    fontWeight = FontWeight.Bold,
+                    color = Color.Blue
+                )
+            }
+        }
+    }
+}
+
+fun isValidEmail(email: String): Boolean {
+    return android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches()
+}
+
+enum class FormType {
+    SignIn, SignUp
+}
+
+@Composable
 fun Sidebar(
     fullName: String,
     avatar: Int,
