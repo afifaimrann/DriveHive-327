@@ -16,7 +16,7 @@ const multer = require("multer");
 const upload = multer({ dest: "uploads/" });
 var admin = require("firebase-admin");
 const Dropbox = require("dropbox").Dropbox;
-const fetch = require('node-fetch'); 
+const fetch = require('node-fetch');
 
 var serviceAccount = require("/Users/shadman/Downloads/firebase_credentials.json");
 
@@ -26,55 +26,92 @@ admin.initializeApp({
 
 const db = admin.firestore();
 
-const driveAccounts = [
+//Added dropbox accounts alongside google drive.
+const cloudAccounts = [
     {
         id: "testDrive",
         auth: new google.auth.OAuth2("CLIENT_ID", "CLIENT_SECRET", "REDIRECT_URI"),
         folderId: "FOLDER_ID",
-        access_token: "ACCESS_TOKEN"
+        access_token: "ACCESS_TOKEN",
+        type: 'google'
     },
     {
         id: "drive1",
         auth: new google.auth.OAuth2("CLIENT_ID", "CLIENT_SECRET", "REDIRECT_URI"),
         folderId: "FOLDER_ID",
-        access_token: "ACCESS_TOKEN"
+        access_token: "ACCESS_TOKEN",
+        type: 'google'
     },
     {
         id: "drive2",
         auth: new google.auth.OAuth2("CLIENT_ID", "CLIENT_SECRET", "REDIRECT_URI"),
         folderId: "FOLDER_ID",
-        access_token: "ACCESS_TOKEN"
+        access_token: "ACCESS_TOKEN",
+        type: 'google'
     },
     {
         id: "drive3",
         auth: new google.auth.OAuth2("CLIENT_ID", "CLIENT_SECRET", "REDIRECT_URI"),
         folderId: "FOLDER_ID",
-        access_token: "ACCESS_TOKEN"
+        access_token: "ACCESS_TOKEN",
+        type: 'google'
     },
     {
         id: "drive4",
         auth: new google.auth.OAuth2("CLIENT_ID", "CLIENT_SECRET", "REDIRECT_URI"),
         folderId: "FOLDER_ID",
-        access_token: "ACCESS_TOKEN"
+        access_token: "ACCESS_TOKEN",
+        type: 'google'
+    },
+    {
+        type: 'dropbox',
+        id: "dropbox1",
+        accessToken: "ACCESS_TOKEN",
+        basePath: ""
+    },
+    {
+        type: 'dropbox',
+        id: "dropbox2",
+        accessToken: "ACCESS_TOKEN",
+        basePath: ""
+    },
+    {
+        type: 'dropbox',
+        id: "dropbox3",
+        accessToken: "ACCESS_TOKEN",
+        basePath: ""
     }
 ];
 
-driveAccounts.forEach(drive => {
-    drive.auth.setCredentials({
-        access_token: drive.access_token
-    });
+cloudAccounts.forEach(account => {
+    if (account.type && account.type === 'dropbox') {
+        account.client = new Dropbox({ accessToken: account.accessToken, fetch });
+    } else {
+        account.auth.setCredentials({
+            access_token: account.access_token
+        });
+    }
 });
 
-const availableStorage = async (auth) => {
-    const drive = google.drive({ version: "v3", auth });
-    const response = await drive.about.get({ fields: "storageQuota" });
-    const storageQuota = response.data.storageQuota;
-    const used = parseInt(storageQuota.usageInDrive);
-    const total = parseInt(storageQuota.limit);
-    const available = total - used;
-    return available;
+//Checks beforehand if we are dealing with a drive object or dropbox object.
+const availableStorage = async (account) => {
+    if (account.type === 'google') {
+        const drive = google.drive({ version: "v3", auth: account.auth });
+        const response = await drive.about.get({ fields: "storageQuota" });
+        const storageQuota = response.data.storageQuota;
+        return parseInt(storageQuota.limit) - parseInt(storageQuota.usageInDrive);
+    }
+
+    if (account.type === 'dropbox') {
+        const dbx = new Dropbox({ accessToken: account.accessToken, fetch });
+        const response = await dbx.usersGetSpaceUsage();
+        return response.result.allocation.allocated - response.result.used;
+    }
+
+    throw new Error('Unknown cloud type');
 };
 
+//For now obsolete
 const getDriveWithSpace = async (fileSize) => {
     for (const driveAccount of driveAccounts) {
         const available = await availableStorage(driveAccount.auth);
@@ -89,19 +126,35 @@ const getDriveWithSpace = async (fileSize) => {
 //Looking for the drive with the maximum available storage, which could be efficient approach I think. Needs to be tested.
 //Integration to possible new upload endpoint.
 //Maybe we do not use this function as demo 1 requires us to tackle the edge case.
-const getDriveWithMaxSpace = async (chunkSize) => {
-    let candidate = null;
-    let maxAvailable = 0;
 
-    for (const driveAccount of driveAccounts) {
-        const available = await availableStorage(driveAccount.auth);
-        if (chunkSize <= available && available > maxAvailable) {
-            maxAvailable = available;
-            candidate = driveAccount;
+
+//17-02-2025
+/*Since we are now dealing with different platforms, we need to introduce more robust
+mechanism to find the best fit account. Previously we did the most available storage account,
+now we do the one chosen at random by an index. */
+const getBestAccount = async (chunkSize) => {
+    const validAccounts = [];
+
+    for (const account of cloudAccounts) {
+        try {
+            const available = await availableStorage(account);
+            if (chunkSize <= available) {
+                validAccounts.push(account);
+            }
+        } catch (error) {
+            console.error(`Error checking storage for ${account.id}:`, error);
         }
     }
-    return candidate;
+
+    if (validAccounts.length === 0) {
+        return null;
+    }
+
+    // Randomly select one of the eligible accounts
+    const randomIndex = Math.floor(Math.random() * validAccounts.length);
+    return validAccounts[randomIndex];
 };
+
 //05-02-2025
 /*Facing a bug where the file is not getting sliced as it should have. And cannot
 test either until download function is up and running. So keeping this as pause for now.
@@ -115,65 +168,95 @@ need those to merge I think.*/
 
 
 // Modified slicing function: Fixed 100MB chunks for files > 600MB
+const uploadChunk = async (account, filePath, chunkInfo) => {
+    if (account.type === 'google') {
+        const drive = google.drive({ version: 'v3', auth: account.auth });
+        const sliceStream = fs.createReadStream(filePath, chunkInfo.range);
+
+        const response = await drive.files.create({
+            requestBody: {
+                name: chunkInfo.name,
+                mimeType: chunkInfo.mimeType,
+                parents: [account.folderId],
+            },
+            media: {
+                mimeType: chunkInfo.mimeType,
+                body: sliceStream,
+            }
+        });
+        console.log(`Uploaded chunk ${chunkInfo.name} to Google Drive ${account.id}`);
+
+        return {
+            type: 'google',
+            fileId: response.data.id,
+            driveId: account.id
+        };
+    }
+
+    //Modifications for dropbox.
+    if (account.type === 'dropbox') {
+        const dbx = new Dropbox({ accessToken: account.accessToken, fetch });
+        const fileBuffer = fs.readFileSync(filePath);
+        const sliced = Uint8Array.prototype.slice.call(fileBuffer, chunkInfo.range.start, chunkInfo.range.end + 1);
+        const fileContent = Buffer.from(sliced);
+
+        const path = `${account.basePath}/${chunkInfo.name}`;
+
+        const response = await dbx.filesUpload({
+            path: path,
+            contents: fileContent,
+            mode: { '.tag': 'overwrite' }
+        });
+        console.log(`Uploaded chunk ${chunkInfo.name} to Dropbox ${account.id}`);
+
+        return {
+            type: 'dropbox',
+            path: response.result.path_display,
+            driveId: account.id //Modified field to driveId since firestore cannot be modified to change field names.
+        };
+    }
+
+    throw new Error('Unsupported cloud type');
+};
+
 const sliceDriveFunction = async (file) => {
-    const CHUNK = 100 * 1024 * 1024; // 100MB, I think 128MB is the max chunk size for http requests to work well. Read somewhere in stackoverflow.
+    const CHUNK_SIZE = 100 * 1024 * 1024; // 100MB
     let offset = 0;
-    let chunkIndex = 0;
-    const chunkUploads = []; // Array to hold metadata for each uploaded chunk
+    const chunkUploads = [];
 
     while (offset < file.size) {
-        // Checking if the current chunk size exceeds the remaining file size
-        const currentChunkSize = Math.min(CHUNK, file.size - offset);
-        console.log(`Processing chunk ${chunkIndex}: offset ${offset} to ${offset + currentChunkSize - 1} (size: ${currentChunkSize} bytes)`);
+        const currentChunkSize = Math.min(CHUNK_SIZE, file.size - offset);
+        const account = await getBestAccount(currentChunkSize);
 
-        const driveAccount = await getDriveWithMaxSpace(currentChunkSize);
-        if (!driveAccount) {
-            throw new Error(`Not enough storage available for chunk at offset ${offset}`);
+        if (!account) {
+            throw new Error(`No available storage for chunk at offset ${offset}`);
         }
-        console.log(`Using drive account "${driveAccount.id}" for chunk ${chunkIndex}`);
 
-        //Creating a read stream for the chunk to handle. 
-        const sliceStream = fs.createReadStream(file.path, {
-            start: offset,
-            end: offset + currentChunkSize - 1
-        });
+        const chunkInfo = {
+            name: `${file.originalname}-chunk-${offset}-${offset + currentChunkSize - 1}`,
+            mimeType: file.mimetype,
+            range: {
+                start: offset,
+                end: offset + currentChunkSize - 1
+            }
+        };
 
-        // Inclusive range, so subtraction of 1 from end.
-        const sliceName = `${file.originalname}-chunk-${chunkIndex}-${offset}-${offset + currentChunkSize - 1}`;
-        const drive = google.drive({ version: 'v3', auth: driveAccount.auth });
         try {
-            console.log(`Uploading chunk ${chunkIndex} to drive "${driveAccount.id}"`);
-            const driveResponse = await drive.files.create({
-                requestBody: {
-                    name: sliceName,
-                    mimeType: file.mimetype,
-                    parents: [driveAccount.folderId],
-                },
-                media: {
-                    mimeType: file.mimetype,
-                    body: sliceStream,
-                }
-            });
-            console.log(`Chunk ${chunkIndex} uploaded successfully. Google Drive File ID: ${driveResponse.data.id}`);
-
-            // Recording metadata for this chunk into an array.
+            const uploadResult = await uploadChunk(account, file.path, chunkInfo);
             chunkUploads.push({
-                driveId: driveAccount.id,
-                googleDrivefileId: driveResponse.data.id,
+                ...uploadResult,
                 chunkSize: currentChunkSize,
-                offset: offset,
-                sliceName: sliceName
+                offset: offset
             });
+
+            offset += currentChunkSize;
         } catch (error) {
-            console.error(`Error uploading chunk ${chunkIndex} to drive "${driveAccount.id}":`, error);
+            console.error(`Error uploading chunk to ${account.id}:`, error);
             throw error;
         }
-
-        // Pointing to the next chunk.
-        offset += currentChunkSize;
-        chunkIndex++;
     }
-    return chunkUploads; // Returning the array.
+
+    return chunkUploads;
 };
 
 
@@ -213,95 +296,45 @@ app.post("/upload", upload.single('file'), async (req, res) => {
     const file = req.file;
     const fileName = file.originalname;
     const fileSize = file.size;
-    const CHUNK_LIMIT = 600 * 1024 * 1024; // 600MB in bytes
+    const CHUNK_LIMIT = 500 * 1024 * 1024; //Reduced to 500MB for testing
 
-    if (fileSize > CHUNK_LIMIT) {
-        console.log(`Initiating chunked upload...`);
-        try {
-            const chunkUploads = await sliceDriveFunction(file);
-            const fileMetaData = {
-                name: fileName,
-                size: fileSize,
-                uploadedAt: new Date().toISOString(),
-                isChunked: true,
-                chunks: chunkUploads, // Array of metadata, stored to streamline downloads
-                mimeType: file.mimetype,
-            };
+    try {
+        // Common metadata
+        const fileMetaData = {
+            name: fileName,
+            size: fileSize,
+            uploadedAt: new Date().toISOString(),
+            mimeType: file.mimetype,
+            isChunked: fileSize > CHUNK_LIMIT,
+            chunks: []
+        };
 
-            await db.collection("files").add(fileMetaData);
-            fs.unlinkSync(file.path);
-            console.log(`Chunked upload completed for "${fileName}".`);
-            return res.send({
-                message: "File upload success in chunks.",
-                chunks: chunkUploads
-            });
-        } catch (error) {
-            console.error("Error during chunked upload:", error);
-            return res.status(500).send("Error uploading file in chunks");
-        }
-    } else {
-        //Simple upload logic. Basically any file < 600MB
-        console.log(`Initiating simple upload`);
-        const driveAccount = await getDriveWithSpace(fileSize); //tested with getDriveWithSpace
-        if (driveAccount) {
-            const drive = google.drive({ version: 'v3', auth: driveAccount.auth });
-            try {
-                const response = await drive.files.create({
-                    requestBody: {
-                        name: fileName,
-                        mimeType: file.mimetype,
-                        parents: [driveAccount.folderId],
-                    },
-                    media: {
-                        mimeType: file.mimetype,
-                        body: fs.createReadStream(file.path),
-                    }
-                });
-
-                const fileMetaData = {
-                    name: fileName,
-                    size: fileSize,
-                    uploadedAt: new Date().toISOString(),
-                    isChunked: false,
-                    driveId: driveAccount.id,
-                    googleDrivefileId: response.data.id,
-                    mimeType: file.mimetype,
-                    downloadUrl: `https://drive.google.com/file/d/${response.data.id}/view`
-                };
-
-                await db.collection("files").add(fileMetaData);
-                fs.unlinkSync(file.path); // Cleaning the temporary file created to read or write.
-                console.log(`Simple upload completed for "${fileName}" using drive "${driveAccount.id}".`);
-                return res.send(response.data);
-            } catch (err) {
-                console.error("Error during simple upload:", err);
-                return res.status(500).send("Error uploading file");
-            }
+        if (fileSize > CHUNK_LIMIT) {
+            fileMetaData.chunks = await sliceDriveFunction(file);
         } else {
-            //Edge case handler which does not seem to work, but kept it nonetheless.
-            console.log(`Edge case trigger`);
-            try {
-                const chunkUploads = await sliceDriveFunction(file);
-                const fileMetaData = {
-                    name: fileName,
-                    size: fileSize,
-                    uploadedAt: new Date().toISOString(),
-                    isChunked: true,
-                    chunks: chunkUploads,
-                    mimeType: file.mimetype,
-                };
+            const account = await getBestAccount(fileSize);
+            if (!account) throw new Error('No available storage');
 
-                await db.collection("files").add(fileMetaData);
-                fs.unlinkSync(file.path);
-                console.log(`Success edge case trigger`);
-                return res.send({
-                    chunks: chunkUploads
-                });
-            } catch (error) {
-                console.error(error);
-                return res.status(500).send("Error edge case trigger");
-            }
+            const uploadResult = await uploadChunk(account, file.path, {
+                name: fileName,
+                mimeType: file.mimetype,
+                range: { start: 0, end: file.size - 1 }
+            });
+
+            fileMetaData.chunks.push(uploadResult);
         }
+
+        await db.collection("files").add(fileMetaData);
+        fs.unlinkSync(file.path);
+
+        res.send({
+            message: "File uploaded successfully",
+            metadata: fileMetaData
+        });
+    } catch (error) {
+        fs.unlinkSync(file.path);
+        console.error("Upload error:", error);
+        res.status(500).send(error.message);
     }
 });
 
@@ -338,113 +371,177 @@ http request, with all the contents of the file loaded into the stream, ready fo
 
 app.get("/download", async (req, res) => {
     const fileName = req.query.fileName;
+    console.log(`Received download request for file: ${fileName}`);
+
     if (!fileName) {
+        console.log("Error: fileName query parameter is missing");
         return res.status(400).send("fileName query parameter is required");
     }
 
     try {
-        // query Firestore for file
+        console.log("Querying Firestore for file metadata...");
         const snapshot = await db.collection("files")
             .where("name", "==", fileName)
             .get();
 
         if (snapshot.empty) {
+            console.log(`File "${fileName}" not found in Firestore.`);
             return res.status(404).send("File not found");
         }
 
-        // Gget the first matching document
         const fileDoc = snapshot.docs[0];
         const fileData = fileDoc.data();
+        console.log(`File found: ${fileData.name}, Size: ${fileData.size} bytes, Chunks: ${fileData.chunks.length}`);
 
-        // Setting the response headers so that the client treats the response as a file download.
         res.setHeader('Content-Disposition', `attachment; filename="${fileData.name}"`);
         res.setHeader('Content-Type', fileData.mimeType);
         res.setHeader('Content-Length', fileData.size);
 
         if (fileData.isChunked) {
-            console.log(`Initiating download for chunked file "${fileData.name}"`);
+            console.log(`Downloading chunked file: ${fileData.name}`);
+            const sortedChunks = fileData.chunks.sort((a, b) => a.offset - b.offset);
 
-            // Sorting chunks by offset to reassemble in the correct order.
-            const sortedChunks = fileData.chunks.sort((a, b) => {
-                if (a.offset < b.offset) {
-                    return -1;
-                } else if (a.offset > b.offset) {
-                    return 1;
-                } else {
-                    return 0;
-                }
-            });
-
-            // Iterating over each chunk sequentially.
             for (const chunk of sortedChunks) {
-                let driveAccount;
-                for (const account of driveAccounts) {
-                    if (account.id === chunk.driveId) {
-                        driveAccount = account;
-                        break;
+                console.log(`Processing chunk at offset ${chunk.offset}, type: ${chunk.type}`);
+
+                const account = cloudAccounts.find(acc => acc.id === chunk.driveId);
+                if (!account) {
+                    console.log(`Error: No associated account found for chunk at offset ${chunk.offset}`);
+                    if (!res.headersSent) {
+                        return res.status(500).send(`Associated account not found for chunk at offset ${chunk.offset}`);
+                    } else {
+                        return res.destroy(new Error(`Associated account not found for chunk at offset ${chunk.offset}`));
                     }
                 }
 
-                if (!driveAccount) {
-                    return res.status(500).send("Associated Drive account not found for a chunk");
+                if (chunk.type === 'google') {
+                    console.log(`Downloading chunk "${chunk.fileId}" from Google Drive account "${account.id}"`);
+                    const drive = google.drive({ version: 'v3', auth: account.auth });
+
+                    try {
+                        const chunkStreamResponse = await drive.files.get({
+                            fileId: chunk.fileId,
+                            alt: 'media'
+                        }, { responseType: 'stream' });
+
+                        console.log(`Streaming chunk offset ${chunk.offset}...`);
+                        await new Promise((resolve, reject) => {
+                            chunkStreamResponse.data
+                                .on('end', () => {
+                                    console.log(`Finished streaming chunk offset ${chunk.offset}`);
+                                    resolve();
+                                })
+                                .on('error', (err) => {
+                                    console.error(`Error streaming chunk offset ${chunk.offset}:`, err);
+                                    if (res.headersSent) {
+                                        res.destroy(err);
+                                    } else {
+                                        reject(err);
+                                    }
+                                })
+                                .pipe(res, { end: false });
+                        });
+                    } catch (err) {
+                        console.error(`Google Drive chunk fetch failed at offset ${chunk.offset}:`, err);
+                        return res.status(500).send(`Failed to fetch chunk ${chunk.offset} from Google Drive`);
+                    }
+                } else if (chunk.type === 'dropbox') {
+                    console.log(`Downloading chunk "${chunk.path}" from Dropbox account "${account.id}"`);
+
+                    try {
+                        const dbx = account.client || new Dropbox({ accessToken: account.accessToken, fetch });
+                        const dropboxResponse = await dbx.filesDownload({ path: chunk.path });
+
+                        res.write(dropboxResponse.result.fileBinary);
+                        console.log(`Finished writing chunk offset ${chunk.offset}`);
+                    } catch (err) {
+                        console.error(`Error downloading chunk from Dropbox at offset ${chunk.offset}:`, err);
+                        return res.status(500).send(`Failed to fetch chunk ${chunk.offset} from Dropbox`);
+                    }
+                } else {
+                    console.log(`Error: Unsupported chunk type: ${chunk.type}`);
+                    if (!res.headersSent) {
+                        return res.status(500).send(`Unsupported chunk type: ${chunk.type}`);
+                    } else {
+                        return res.destroy(new Error(`Unsupported chunk type: ${chunk.type}`));
+                    }
                 }
-
-                const drive = google.drive({ version: 'v3', auth: driveAccount.auth });
-                console.log(`Downloading chunk "${chunk.sliceName}" from drive "${driveAccount.id}"`);
-
-                // Getting the stream for the current chunk from Google Drive.
-                const chunkStreamResponse = await drive.files.get({
-                    fileId: chunk.googleDrivefileId,
-                    alt: 'media'
-                }, { responseType: 'stream' });
-
-                // Piping the chunk stream into the response stream.
-                await new Promise((resolve, reject) => {
-                    chunkStreamResponse.data
-                        .on('end', () => {
-                            console.log(`Finished downloading chunk "${chunk.sliceName}"`);
-                            resolve();
-                        })
-                        .on('error', (err) => {
-                            console.error(`Error streaming chunk "${chunk.sliceName}":`, err);
-                            reject(err);
-                        })
-                        .pipe(res, { end: false });
-                });
             }
-            // Ending the response after all chunks have been streamed.
+            console.log(`Completed downloading all chunks for file: ${fileData.name}`);
             res.end();
         } else {
-            console.log(`Initiating download for unchunked file "${fileData.name}"`);
+            console.log(`Downloading unchunked file: ${fileData.name}`);
+            const singleChunk = fileData.chunks[0];
+            const account = cloudAccounts.find(acc => acc.id === singleChunk.driveId);
 
-            // find the corresponding drive account
-            const driveAccount = driveAccounts.find(d => d.id === fileData.driveId);
-            if (!driveAccount) {
-                return res.status(500).send("Associated Drive account not found");
+            if (!account) {
+                console.log("Error: No associated account found for unchunked file");
+                if (!res.headersSent) {
+                    return res.status(500).send("Associated account not found");
+                } else {
+                    return res.destroy(new Error("Associated account not found"));
+                }
             }
+            //Checks type of file, if google, downloads from google drive, if dropbox, downloads from dropbox.
+            if (singleChunk.type === 'google') {
+                console.log(`Downloading file from Google Drive account "${account.id}"`);
+                const drive = google.drive({ version: 'v3', auth: account.auth });
 
-            // initialize Google Drive client
-            const drive = google.drive({ version: 'v3', auth: driveAccount.auth });
-            console.log(`Downloading file from drive "${driveAccount.id}"`);
+                try {
+                    const responseStream = await drive.files.get({
+                        fileId: singleChunk.fileId,
+                        alt: 'media'
+                    }, { responseType: 'stream' });
 
-            // Stream the file from Google Drive
-            const response = await drive.files.get({
-                fileId: fileData.googleDrivefileId,
-                alt: 'media'
-            }, { responseType: 'stream' });
+                    console.log(`Streaming Google Drive file "${singleChunk.fileId}"`);
+                    responseStream.data
+                        .on('end', () => console.log("Completed streaming file from Google Drive"))
+                        .on('error', err => {
+                            console.error('Error streaming file:', err);
+                            if (!res.headersSent) {
+                                res.status(500).end();
+                            } else {
+                                res.destroy(err);
+                            }
+                        })
+                        .pipe(res);
+                } catch (err) {
+                    console.error(`Error fetching file from Google Drive:`, err);
+                    return res.status(500).send("Failed to fetch file from Google Drive");
+                }
+            } else if (singleChunk.type === 'dropbox') {
+                console.log(`Downloading file from Dropbox account "${account.id}"`);
+                try {
+                    const dbx = account.client || new Dropbox({ accessToken: account.accessToken, fetch });
+                    const dropboxResponse = await dbx.filesDownload({ path: singleChunk.path });
 
-            response.data
-                .on('error', err => {
-                    console.error('Error streaming file:', err);
-                    res.status(500).end();
-                })
-                .pipe(res);
+                    res.write(dropboxResponse.result.fileBinary);
+                    console.log(`Completed writing file from Dropbox`);
+                    res.end();
+                } catch (err) {
+                    console.error(`Error fetching file from Dropbox:`, err);
+                    return res.status(500).send("Failed to fetch file from Dropbox");
+                }
+            } else {
+                console.log(`Error: Unsupported file type: ${singleChunk.type}`);
+                if (!res.headersSent) {
+                    return res.status(500).send(`Unsupported file type: ${singleChunk.type}`);
+                } else {
+                    return res.destroy(new Error(`Unsupported file type: ${singleChunk.type}`));
+                }
+            }
         }
     } catch (error) {
-        console.error('Download error:', error);
-        res.status(500).send("Internal server error");
+        console.error('Unexpected download error:', error);
+        if (!res.headersSent) {
+            res.status(500).send("Internal server error");
+        } else {
+            res.destroy(error);
+        }
     }
 });
+
+
 
 //Work beyond project update 1
 
@@ -694,49 +791,49 @@ for multiple dropboxes, then merged with the existing upload and download endpoi
 The user should not be able to see anything that goes down in the backend. Integration with
 firestore necessary as well, which should be fairly easy.*/
 
-const dbx = new Dropbox({ accessToken: "ACCESS_TOKEN" });
-app.post('/dropboxUpload', upload.single('file'), async (req, res) => {
-    const file = req.file;
-    const dropBoxPath = `/${file.originalname}`;
+// const dbx = new Dropbox({ accessToken: "ACCESS_TOKEN" });
+// app.post('/dropboxUpload', upload.single('file'), async (req, res) => {
+//     const file = req.file;
+//     const dropBoxPath = `/${file.originalname}`;
 
 
-    const fileContent = fs.readFileSync(file.path); //dropbox for some reason won't accept a steam.
+//     const fileContent = fs.readFileSync(file.path); //dropbox for some reason won't accept a steam.
 
-    dbx.filesUpload({
-        path: dropBoxPath,
-        contents: fileContent,
-        mode: { '.tag': 'overwrite' }
-    }).then((response) => {
-        //console.log(response);
-        res.send("File uploaded successfully");
-    })
-        .catch((error) => {
-            console.error(error);
-            res.status(500).send("Error uploading file");
-        });
-});
+//     dbx.filesUpload({
+//         path: dropBoxPath,
+//         contents: fileContent,
+//         mode: { '.tag': 'overwrite' }
+//     }).then((response) => {
+//         //console.log(response);
+//         res.send("File uploaded successfully");
+//     })
+//         .catch((error) => {
+//             console.error(error);
+//             res.status(500).send("Error uploading file");
+//         });
+// });
 
 
-//Working single small file download endpoint, needs to be integrated with the main download endpoint. Also changes for distributed file (drop box) systems needed.
-//http://localhost:3000/dropboxDownload?fileName=THEFILENAME use this sort of structure in browser to download files.
-app.get('/dropboxDownload', async (req, res) => {
-    const fileName = req.query.fileName;
-    if (!fileName) {
-        return res.status(400).send("Missing fileName query parameter");
-    }
+// //Working single small file download endpoint, needs to be integrated with the main download endpoint. Also changes for distributed file (drop box) systems needed.
+// //http://localhost:3000/dropboxDownload?fileName=THEFILENAME use this sort of structure in browser to download files.
+// app.get('/dropboxDownload', async (req, res) => {
+//     const fileName = req.query.fileName;
+//     if (!fileName) {
+//         return res.status(400).send("Missing fileName query parameter");
+//     }
 
-    const dropBoxPath = `/${fileName}`;
-    
-    try {
-        const response = await dbx.filesDownload({ path: dropBoxPath });
-        res.setHeader('Content-Disposition', `attachment; filename="${response.result.name}"`);
-        res.setHeader('Content-Type', 'application/octet-stream');
-        res.send(response.result.fileBinary);
-    } catch (error) {
-        console.error("Error downloading file:", error);
-        res.status(500).send("Error downloading file");
-    }
-});
+//     const dropBoxPath = `/${fileName}`;
+
+//     try {
+//         const response = await dbx.filesDownload({ path: dropBoxPath });
+//         res.setHeader('Content-Disposition', `attachment; filename="${response.result.name}"`);
+//         res.setHeader('Content-Type', 'application/octet-stream');
+//         res.send(response.result.fileBinary);
+//     } catch (error) {
+//         console.error("Error downloading file:", error);
+//         res.status(500).send("Error downloading file");
+//     }
+// });
 
 
 //------------------------------------------DROPBOX TERRITORY------------------------------------------------
@@ -751,74 +848,74 @@ I be handling that. But wrote these almost similar endpoints for download and up
 If anyone can figure out access token issue, feel free to let me know. */
 
 app.post('/onedriveUpload', upload.single('file'), async (req, res) => {
-  try {
-    const file = req.file;
-    if (!file) {
-      return res.status(400).send('No file uploaded');
+    try {
+        const file = req.file;
+        if (!file) {
+            return res.status(400).send('No file uploaded');
+        }
+
+        const fileContent = fs.readFileSync(file.path);
+
+        const oneDrivePath = `/drive/root:/${file.originalname}:/content`;
+
+        const accessToken = "YOUR_ACCESS_TOKEN";
+
+        const response = await fetch(`https://graph.microsoft.com/v1.0${oneDrivePath}`, {
+            method: 'PUT',
+            headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Content-Type': file.mimetype || 'application/octet-stream'
+            },
+            body: fileContent
+        });
+
+        if (!response.ok) {
+            const errText = await response.text();
+            console.error('Error uploading file:', errText);
+            return res.status(response.status).send("Error uploading file to OneDrive");
+        }
+
+        const jsonResponse = await response.json();
+        res.send("File uploaded successfully to OneDrive");
+
+    } catch (err) {
+        console.error("Upload error:", err);
+        res.status(500).send("Internal server error");
     }
-    
-    const fileContent = fs.readFileSync(file.path);
-    
-    const oneDrivePath = `/drive/root:/${file.originalname}:/content`;
-    
-    const accessToken = "YOUR_ACCESS_TOKEN";
-    
-    const response = await fetch(`https://graph.microsoft.com/v1.0${oneDrivePath}`, {
-      method: 'PUT',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': file.mimetype || 'application/octet-stream'
-      },
-      body: fileContent
-    });
-    
-    if (!response.ok) {
-      const errText = await response.text();
-      console.error('Error uploading file:', errText);
-      return res.status(response.status).send("Error uploading file to OneDrive");
-    }
-    
-    const jsonResponse = await response.json();
-    res.send("File uploaded successfully to OneDrive");
-    
-  } catch (err) {
-    console.error("Upload error:", err);
-    res.status(500).send("Internal server error");
-  }
 });
 
 
 app.get('/onedriveDownload', async (req, res) => {
-  const fileName = req.query.fileName;
-  if (!fileName) {
-    return res.status(400).send('Missing fileName query parameter');
-  }
-
-  const accessToken = "YOUR_ACCESS_TOKEN"; 
-  const oneDrivePath = `/drive/root:/${encodeURIComponent(fileName)}:/content`;
-  const url = `https://graph.microsoft.com/v1.0${oneDrivePath}`;
-
-  try {
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`
-      }
-    });
-    
-    if (!response.ok) {
-      const errText = await response.text();
-      console.error('Error downloading file:', errText);
-      return res.status(response.status).send(errText);
+    const fileName = req.query.fileName;
+    if (!fileName) {
+        return res.status(400).send('Missing fileName query parameter');
     }
 
-    res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
-    
-    response.body.pipe(res);
-  } catch (error) {
-    console.error("Download endpoint error:", error);
-    res.status(500).send("Internal server error while downloading the file");
-  }
+    const accessToken = "YOUR_ACCESS_TOKEN";
+    const oneDrivePath = `/drive/root:/${encodeURIComponent(fileName)}:/content`;
+    const url = `https://graph.microsoft.com/v1.0${oneDrivePath}`;
+
+    try {
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${accessToken}`
+            }
+        });
+
+        if (!response.ok) {
+            const errText = await response.text();
+            console.error('Error downloading file:', errText);
+            return res.status(response.status).send(errText);
+        }
+
+        res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+
+        response.body.pipe(res);
+    } catch (error) {
+        console.error("Download endpoint error:", error);
+        res.status(500).send("Internal server error while downloading the file");
+    }
 });
 
 
