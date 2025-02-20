@@ -13,8 +13,8 @@ export interface FileMetadata {
 }
 
 /**
- * The response your /upload endpoint returns.
- * Example shape (based on your backend code):
+ * The response my /upload endpoint returns.
+ * Example shape (based on backend code):
  * {
  *   "message": "File uploaded successfully",
  *   "metadata": {
