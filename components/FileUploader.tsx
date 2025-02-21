@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useCallback, useState } from 'react';
-
 import { useDropzone } from 'react-dropzone';
 import { Button } from '@/components/ui/button';
 import { cn, convertFileToUrl, getFileType } from '@/lib/utils';
@@ -9,16 +8,13 @@ import Image from 'next/image';
 import Thumbnail from '@/components/Thumbnail';
 import { MAX_FILE_SIZE } from '@/constants';
 import { useToast } from '@/hooks/use-toast';
-import { usePathname } from 'next/navigation';
+import { uploadFile } from '@/lib/api'; // Use the API call from our api.ts
 
 interface Props {
-  ownerId: string;
-  accountId: string;
   className?: string;
 }
 
-const FileUploader = ({ ownerId, accountId, className }: Props) => {
-  const path = usePathname();
+const FileUploader = ({ className }: Props) => {
   const { toast } = useToast();
   const [files, setFiles] = useState<File[]>([]);
 
@@ -31,7 +27,6 @@ const FileUploader = ({ ownerId, accountId, className }: Props) => {
           setFiles((prevFiles) =>
             prevFiles.filter((f) => f.name !== file.name)
           );
-
           return toast({
             description: (
               <p className="body-2 text-white">
@@ -43,20 +38,40 @@ const FileUploader = ({ ownerId, accountId, className }: Props) => {
           });
         }
 
-        return uploadFile({ file, ownerId, accountId, path }).then(
-          (uploadedFile) => {
-            if (uploadedFile) {
-              setFiles((prevFiles) =>
-                prevFiles.filter((f) => f.name !== file.name)
-              );
-            }
+        try {
+          const uploadedFile = await uploadFile(file);
+          if (uploadedFile) {
+            setFiles((prevFiles) =>
+              prevFiles.filter((f) => f.name !== file.name)
+            );
+            toast({
+              description: (
+                <p className="body-2 text-white">
+                  File <span className="font-semibold">{file.name}</span>{' '}
+                  uploaded successfully!
+                </p>
+              ),
+              className: 'success-toast',
+            });
           }
-        );
+        } catch (error) {
+          console.error('Error uploading file:', error);
+          toast({
+            description: (
+              <p className="body-2 text-white">
+                Error uploading{' '}
+                <span className="font-semibold">{file.name}</span>:{' '}
+                {error instanceof Error ? error.message : 'Unknown error'}
+              </p>
+            ),
+            className: 'error-toast',
+          });
+        }
       });
 
       await Promise.all(uploadPromises);
     },
-    [ownerId, accountId, path]
+    [toast]
   );
 
   const { getRootProps, getInputProps } = useDropzone({ onDrop });
@@ -84,10 +99,8 @@ const FileUploader = ({ ownerId, accountId, className }: Props) => {
       {files.length > 0 && (
         <ul className="uploader-preview-list">
           <h4 className="h4 text-light-100">Uploading</h4>
-
           {files.map((file, index) => {
             const { type, extension } = getFileType(file.name);
-
             return (
               <li
                 key={`${file.name}-${index}`}
@@ -99,7 +112,6 @@ const FileUploader = ({ ownerId, accountId, className }: Props) => {
                     extension={extension}
                     url={convertFileToUrl(file)}
                   />
-
                   <div className="preview-item-name">
                     {file.name}
                     <Image
@@ -110,7 +122,6 @@ const FileUploader = ({ ownerId, accountId, className }: Props) => {
                     />
                   </div>
                 </div>
-
                 <Image
                   src="/assets/icons/remove.svg"
                   width={24}
