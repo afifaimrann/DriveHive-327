@@ -1,0 +1,116 @@
+[debug] [2025-02-04T06:37:34.703Z] ----------------------------------------------------------------------
+[debug] [2025-02-04T06:37:34.705Z] Command:       C:\Program Files\nodejs\node.exe C:\Users\HP\AppData\Roaming\npm\node_modules\firebase-tools\lib\bin\firebase.js projects:create your-project-id --display-name Your Project Name
+[debug] [2025-02-04T06:37:34.705Z] CLI Version:   13.29.3
+[debug] [2025-02-04T06:37:34.705Z] Platform:      win32
+[debug] [2025-02-04T06:37:34.705Z] Node Version:  v22.13.1
+[debug] [2025-02-04T06:37:34.706Z] Time:          Tue Feb 04 2025 12:37:34 GMT+0600 (Bangladesh Standard Time)
+[debug] [2025-02-04T06:37:34.706Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2025-02-04T06:37:34.712Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2025-02-04T06:37:34.712Z] > authorizing via signed-in user (afifa.imran@northsouth.edu)
+[debug] [2025-02-04T06:37:34.720Z] Checked if tokens are valid: true, expires at: 1738653523995
+[debug] [2025-02-04T06:37:34.720Z] Checked if tokens are valid: true, expires at: 1738653523995
+[debug] [2025-02-04T06:37:34.721Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects [none]
+[debug] [2025-02-04T06:37:34.721Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects {"projectId":"your-project-id","name":"Your Project Name"}
+[debug] [2025-02-04T06:37:36.571Z] <<< [apiv2][status] POST https://cloudresourcemanager.googleapis.com/v1/projects 409
+[debug] [2025-02-04T06:37:36.571Z] <<< [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects {"error":{"code":409,"message":"Requested entity already exists","status":"ALREADY_EXISTS"}}
+[debug] [2025-02-04T06:37:36.939Z] FirebaseError: Request to https://cloudresourcemanager.googleapis.com/v1/projects had HTTP Error: 409, Requested entity already exists
+    at responseToError (C:\Users\HP\AppData\Roaming\npm\node_modules\firebase-tools\lib\responseToError.js:52:12)
+    at RetryOperation._fn (C:\Users\HP\AppData\Roaming\npm\node_modules\firebase-tools\lib\apiv2.js:312:77)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+[error] 
+[error] Error: Failed to create project because there is already a project with ID your-project-id. Please try again with a unique project ID.
+[debug] [2025-02-04T06:38:16.938Z] ----------------------------------------------------------------------
+[debug] [2025-02-04T06:38:16.940Z] Command:       C:\Program Files\nodejs\node.exe C:\Users\HP\AppData\Roaming\npm\node_modules\firebase-tools\lib\bin\firebase.js projects:create your-project-id --display-name storeit
+[debug] [2025-02-04T06:38:16.941Z] CLI Version:   13.29.3
+[debug] [2025-02-04T06:38:16.941Z] Platform:      win32
+[debug] [2025-02-04T06:38:16.941Z] Node Version:  v22.13.1
+[debug] [2025-02-04T06:38:16.941Z] Time:          Tue Feb 04 2025 12:38:16 GMT+0600 (Bangladesh Standard Time)
+[debug] [2025-02-04T06:38:16.941Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2025-02-04T06:38:16.948Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2025-02-04T06:38:16.949Z] > authorizing via signed-in user (afifa.imran@northsouth.edu)
+[debug] [2025-02-04T06:38:16.955Z] Checked if tokens are valid: true, expires at: 1738653523995
+[debug] [2025-02-04T06:38:16.956Z] Checked if tokens are valid: true, expires at: 1738653523995
+[debug] [2025-02-04T06:38:16.956Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects [none]
+[debug] [2025-02-04T06:38:16.957Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects {"projectId":"your-project-id","name":"storeit"}
+[debug] [2025-02-04T06:38:18.725Z] <<< [apiv2][status] POST https://cloudresourcemanager.googleapis.com/v1/projects 409
+[debug] [2025-02-04T06:38:18.726Z] <<< [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects {"error":{"code":409,"message":"Requested entity already exists","status":"ALREADY_EXISTS"}}
+[debug] [2025-02-04T06:38:19.075Z] FirebaseError: Request to https://cloudresourcemanager.googleapis.com/v1/projects had HTTP Error: 409, Requested entity already exists
+    at responseToError (C:\Users\HP\AppData\Roaming\npm\node_modules\firebase-tools\lib\responseToError.js:52:12)
+    at RetryOperation._fn (C:\Users\HP\AppData\Roaming\npm\node_modules\firebase-tools\lib\apiv2.js:312:77)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+[error] 
+[error] Error: Failed to create project because there is already a project with ID your-project-id. Please try again with a unique project ID.
+[debug] [2025-02-04T06:39:52.786Z] ----------------------------------------------------------------------
+[debug] [2025-02-04T06:39:52.788Z] Command:       C:\Program Files\nodejs\node.exe C:\Users\HP\AppData\Roaming\npm\node_modules\firebase-tools\lib\bin\firebase.js projects:create your-project-id --display-name storeit-c1eea
+[debug] [2025-02-04T06:39:52.788Z] CLI Version:   13.29.3
+[debug] [2025-02-04T06:39:52.788Z] Platform:      win32
+[debug] [2025-02-04T06:39:52.788Z] Node Version:  v22.13.1
+[debug] [2025-02-04T06:39:52.789Z] Time:          Tue Feb 04 2025 12:39:52 GMT+0600 (Bangladesh Standard Time)
+[debug] [2025-02-04T06:39:52.789Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2025-02-04T06:39:52.795Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2025-02-04T06:39:52.796Z] > authorizing via signed-in user (afifa.imran@northsouth.edu)
+[debug] [2025-02-04T06:39:52.802Z] Checked if tokens are valid: true, expires at: 1738653523995
+[debug] [2025-02-04T06:39:52.803Z] Checked if tokens are valid: true, expires at: 1738653523995
+[debug] [2025-02-04T06:39:52.804Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects [none]
+[debug] [2025-02-04T06:39:52.804Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects {"projectId":"your-project-id","name":"storeit-c1eea"}
+[debug] [2025-02-04T06:39:54.563Z] <<< [apiv2][status] POST https://cloudresourcemanager.googleapis.com/v1/projects 409
+[debug] [2025-02-04T06:39:54.563Z] <<< [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects {"error":{"code":409,"message":"Requested entity already exists","status":"ALREADY_EXISTS"}}
+[debug] [2025-02-04T06:39:54.928Z] FirebaseError: Request to https://cloudresourcemanager.googleapis.com/v1/projects had HTTP Error: 409, Requested entity already exists
+    at responseToError (C:\Users\HP\AppData\Roaming\npm\node_modules\firebase-tools\lib\responseToError.js:52:12)
+    at RetryOperation._fn (C:\Users\HP\AppData\Roaming\npm\node_modules\firebase-tools\lib\apiv2.js:312:77)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+[error] 
+[error] Error: Failed to create project because there is already a project with ID your-project-id. Please try again with a unique project ID.
+[debug] [2025-02-04T06:40:38.338Z] ----------------------------------------------------------------------
+[debug] [2025-02-04T06:40:38.340Z] Command:       C:\Program Files\nodejs\node.exe C:\Users\HP\AppData\Roaming\npm\node_modules\firebase-tools\lib\bin\firebase.js projects:create your-project-id --display-name storeit-c1ee12f6
+[debug] [2025-02-04T06:40:38.341Z] CLI Version:   13.29.3
+[debug] [2025-02-04T06:40:38.341Z] Platform:      win32
+[debug] [2025-02-04T06:40:38.341Z] Node Version:  v22.13.1
+[debug] [2025-02-04T06:40:38.341Z] Time:          Tue Feb 04 2025 12:40:38 GMT+0600 (Bangladesh Standard Time)
+[debug] [2025-02-04T06:40:38.341Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2025-02-04T06:40:38.348Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2025-02-04T06:40:38.348Z] > authorizing via signed-in user (afifa.imran@northsouth.edu)
+[debug] [2025-02-04T06:40:38.355Z] Checked if tokens are valid: true, expires at: 1738653523995
+[debug] [2025-02-04T06:40:38.355Z] Checked if tokens are valid: true, expires at: 1738653523995
+[debug] [2025-02-04T06:40:38.356Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects [none]
+[debug] [2025-02-04T06:40:38.356Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects {"projectId":"your-project-id","name":"storeit-c1ee12f6"}
+[debug] [2025-02-04T06:40:40.146Z] <<< [apiv2][status] POST https://cloudresourcemanager.googleapis.com/v1/projects 409
+[debug] [2025-02-04T06:40:40.146Z] <<< [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects {"error":{"code":409,"message":"Requested entity already exists","status":"ALREADY_EXISTS"}}
+[debug] [2025-02-04T06:40:40.483Z] FirebaseError: Request to https://cloudresourcemanager.googleapis.com/v1/projects had HTTP Error: 409, Requested entity already exists
+    at responseToError (C:\Users\HP\AppData\Roaming\npm\node_modules\firebase-tools\lib\responseToError.js:52:12)
+    at RetryOperation._fn (C:\Users\HP\AppData\Roaming\npm\node_modules\firebase-tools\lib\apiv2.js:312:77)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+[error] 
+[error] Error: Failed to create project because there is already a project with ID your-project-id. Please try again with a unique project ID.
+[debug] [2025-02-04T06:43:13.730Z] ----------------------------------------------------------------------
+[debug] [2025-02-04T06:43:13.732Z] Command:       C:\Program Files\nodejs\node.exe C:\Users\HP\AppData\Roaming\npm\node_modules\firebase-tools\lib\bin\firebase.js projects:create storeit-uniqueid --display-name storeit-78265
+[debug] [2025-02-04T06:43:13.733Z] CLI Version:   13.29.3
+[debug] [2025-02-04T06:43:13.733Z] Platform:      win32
+[debug] [2025-02-04T06:43:13.733Z] Node Version:  v22.13.1
+[debug] [2025-02-04T06:43:13.733Z] Time:          Tue Feb 04 2025 12:43:13 GMT+0600 (Bangladesh Standard Time)
+[debug] [2025-02-04T06:43:13.733Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2025-02-04T06:43:13.739Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2025-02-04T06:43:13.740Z] > authorizing via signed-in user (afifa.imran@northsouth.edu)
+[debug] [2025-02-04T06:43:13.746Z] Checked if tokens are valid: true, expires at: 1738653523995
+[debug] [2025-02-04T06:43:13.747Z] Checked if tokens are valid: true, expires at: 1738653523995
+[debug] [2025-02-04T06:43:13.748Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects [none]
+[debug] [2025-02-04T06:43:13.748Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects {"projectId":"storeit-uniqueid","name":"storeit-78265"}
+[debug] [2025-02-04T06:43:15.819Z] <<< [apiv2][status] POST https://cloudresourcemanager.googleapis.com/v1/projects 200
+[debug] [2025-02-04T06:43:15.819Z] <<< [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects {"name":"operations/cp.7890663854763594481"}
+[debug] [2025-02-04T06:43:15.820Z] Checked if tokens are valid: true, expires at: 1738653523995
+[debug] [2025-02-04T06:43:15.820Z] Checked if tokens are valid: true, expires at: 1738653523995
+[debug] [2025-02-04T06:43:15.820Z] >>> [apiv2][query] GET https://cloudresourcemanager.googleapis.com/v1/operations/cp.7890663854763594481 [none]
+[debug] [2025-02-04T06:43:17.586Z] <<< [apiv2][status] GET https://cloudresourcemanager.googleapis.com/v1/operations/cp.7890663854763594481 200
+[debug] [2025-02-04T06:43:17.586Z] <<< [apiv2][body] GET https://cloudresourcemanager.googleapis.com/v1/operations/cp.7890663854763594481 {"name":"operations/cp.7890663854763594481","metadata":{"@type":"type.googleapis.com/google.cloudresourcemanager.v1.ProjectCreationStatus","ready":true},"done":true,"error":{"code":9,"message":"Callers must accept Terms of Service","details":[{"@type":"type.googleapis.com/google.rpc.PreconditionFailure","violations":[{"type":"TOS","subject":"cloud","description":"Callers must accept Terms of Service"}]}]}}
+[debug] [2025-02-04T06:43:17.960Z] FirebaseError: Callers must accept Terms of Service
+    at OperationPoller.poll (C:\Users\HP\AppData\Roaming\npm\node_modules\firebase-tools\lib\operation-poller.js:24:19)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async createCloudProject (C:\Users\HP\AppData\Roaming\npm\node_modules\firebase-tools\lib\management\projects.js:213:29)
+    at async createFirebaseProjectAndLog (C:\Users\HP\AppData\Roaming\npm\node_modules\firebase-tools\lib\management\projects.js:71:9)
+[error] 
+[error] Error: Failed to create project. See firebase-debug.log for more info.
