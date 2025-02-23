@@ -1,10 +1,6 @@
 const { GoogleDriveStorage, DropboxStorage } = require("./cloudStorage");
 
-// Create a cloud storage instance based on the account type.
-// @param {Object} account - Account info.
-// @returns {CloudStorage} - A cloud storage instance.
-// @throws {Error} - If the account type is not supported.
-
+// Creating a cloud storage instance based on the account type.
 function createCloudStorage(account) {
   if (!account.type || account.type === "google") {
     return new GoogleDriveStorage({

@@ -11,7 +11,7 @@ class FileHandler {
     this.cloudAccounts = cloudAccounts;
   }
 
-  // Finding an account that has enough available storage for a given chunk
+  // Finding an account that has enough available storage for a given chunk, also exists in index.js
   async getBestAccount(chunkSize, availableStorageFunc) {
     const validAccounts = [];
     for (const account of this.cloudAccounts) {
@@ -51,57 +51,61 @@ class ChunkedFileUploads extends FileHandler {
     throw new Error("Unknown cloud type");
   }
 
+  /*The slicedUpload logic has not changed at all, except now uses the methods from its 
+  parent class and its own methods as well. */
+
   async sliceUpload() {
-    let offset = 0;
-    const chunkUploads = [];
+    let offset = 0; // Pointer 
+    const chunkUploads = []; // Array to store metadata
+    /*As long as our pointer is within range of the file size */
     while (offset < this.file.size) {
-      const currentChunkSize = Math.min(this.CHUNK_SIZE, this.file.size - offset);
+      const currentChunkSize = Math.min(this.CHUNK_SIZE, this.file.size - offset); // Since our chunks are 100MB, if suppose we have something 580MB, we need to have our last chunk as 80MB, instead of hardcoding 100MB, to avoid errors.
       const account = await this.getBestAccount(currentChunkSize, this.availableStorage.bind(this));
       if (!account) {
         throw new Error(`No available storage for chunk at offset ${offset}`);
       }
-      const storage = createCloudStorage(account);
+      const storage = createCloudStorage(account); // Creating a bucket storage instance
       const chunkInfo = {
         name: `${this.file.originalname}-chunk-${offset}-${offset + currentChunkSize - 1}`,
         mimeType: this.file.mimetype,
         range: { start: offset, end: offset + currentChunkSize - 1 }
       };
       try {
-        const uploadResult = await storage.uploadChunk(chunkInfo, this.file.path);
+        const uploadResult = await storage.uploadChunk(chunkInfo, this.file.path); // Uploading the chunk and pusing its metadata
         chunkUploads.push({
           ...uploadResult,
           chunkSize: currentChunkSize,
           offset: offset,
           type: uploadResult.type
         });
-        offset += currentChunkSize;
+        offset += currentChunkSize; // Updating the pointer
       } catch (error) {
         console.error(`Error uploading chunk at offset ${offset} to ${account.id}:`, error);
         throw error;
       }
     }
-    return chunkUploads;
+    return chunkUploads; // Returning the metadata
   }
 }
 
 // Base class for chunked file downloads
 class ChunkedFileDownloads extends FileHandler {
   constructor(fileMetaData, cloudAccounts) {
-    // fileMetaData is the object stored in Firestore (contains chunks info)
+    // fileMetaData is the object containing metadata of the file
     super(fileMetaData, cloudAccounts);
     this.fileMetaData = fileMetaData;
   }
 
   // Determining and returning the storage instance for a chunk
   getStorageForChunk(chunk) {
-    const account = this.cloudAccounts.find(acc => acc.id === chunk.driveId);
+    const account = this.cloudAccounts.find(acc => acc.id === chunk.driveId); // Locating the chunk from our array of cloud storages
     if (!account) {
       throw new Error(`Associated account not found for chunk at offset ${chunk.offset}`);
     }
-    return createCloudStorage(account);
+    return createCloudStorage(account); // Returning the storage instance, created.
   }
 
-  // Method to be overridden by specialized providers
+  // Method to be overridden based on need, to extend further.
   async downloadChunk(chunk) {
     throw new Error("downloadChunk() must be implemented in a subclass");
   }
@@ -109,10 +113,12 @@ class ChunkedFileDownloads extends FileHandler {
 
 // Class to handle Google Drive chunk downloads
 class DriveChunkedFile extends ChunkedFileDownloads {
+  // The purpose of this method is mainly to handle the streaming of the chunk to the client side, for Google Drive. 
+  // We had a disasterclass naming the methods.
   async downloadChunk(chunk, res) {
     const storage = this.getStorageForChunk(chunk);
     try {
-      const stream = await storage.downloadChunk(chunk);
+      const stream = await storage.downloadChunk(chunk); // This is the download chunk method from cloudStorage.js, which sends a steam of the chunk
       await new Promise((resolve, reject) => {
         stream
           .on("end", () => {
@@ -134,10 +140,11 @@ class DriveChunkedFile extends ChunkedFileDownloads {
 
 // Class to handle Dropbox chunk downloads
 class DropboxChunkedFile extends ChunkedFileDownloads {
+  // The purpose of this method is mainly to handle the streaming of the chunk to the client side, but for Dropbox.
   async downloadChunk(chunk, res) {
     const storage = this.getStorageForChunk(chunk);
     try {
-      const fileBinary = await storage.downloadChunk(chunk);
+      const fileBinary = await storage.downloadChunk(chunk); // This is the download chunk method from cloudStorage.js, which sends a steam of the chunk
       res.write(fileBinary);
     } catch (err) {
       console.error(`Error downloading Dropbox chunk at offset ${chunk.offset}:`, err);

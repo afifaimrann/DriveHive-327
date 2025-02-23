@@ -3,14 +3,15 @@ const { google } = require("googleapis");
 const { Dropbox } = require("dropbox");
 const fetch = require("node-fetch");
 
-
+/*Here extension for any type of bucket is possible. In this file, mainly all are just API calls, method overriding, class extension. */
 class CloudStorage {
   /**
    * Upload a chunk of a file.
    * @param {Object} chunkInfo - { name, mimeType, range: {start, end} }
    * @param {string} filePath - The path of the source file.
-   * @returns {Object} - Provider-specific metadata (e.g. fileId or path).
+   * @returns {Object} - Provider-specific metadata 
    */
+
   async uploadChunk(chunkInfo, filePath) {
     throw new Error("uploadChunk() must be implemented by subclass");
   }
@@ -20,6 +21,7 @@ class CloudStorage {
    * @param {Object} chunkInfo - Metadata for the chunk.
    * @returns {ReadableStream|Buffer} - A stream (Google Drive) or Buffer (Dropbox).
    */
+
   async downloadChunk(chunkInfo) {
     throw new Error("downloadChunk() must be implemented by subclass");
   }
