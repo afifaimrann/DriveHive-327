@@ -3,7 +3,6 @@ const { google } = require("googleapis");
 const { Dropbox } = require("dropbox");
 const fetch = require("node-fetch");
 
-/*Here extension for any type of bucket is possible. In this file, mainly all are just API calls, method overriding, class extension. */
 class CloudStorage {
   /**
    * Upload a chunk of a file.
@@ -11,7 +10,6 @@ class CloudStorage {
    * @param {string} filePath - The path of the source file.
    * @returns {Object} - Provider-specific metadata 
    */
-
   async uploadChunk(chunkInfo, filePath) {
     throw new Error("uploadChunk() must be implemented by subclass");
   }
@@ -21,12 +19,18 @@ class CloudStorage {
    * @param {Object} chunkInfo - Metadata for the chunk.
    * @returns {ReadableStream|Buffer} - A stream (Google Drive) or Buffer (Dropbox).
    */
-
   async downloadChunk(chunkInfo) {
     throw new Error("downloadChunk() must be implemented by subclass");
   }
-}
 
+  /**
+   * Get the available storage for this cloud storage provider.
+   * @returns {Promise<number>} - The available storage in bytes.
+   */
+  async getAvailableStorage() {
+    throw new Error("getAvailableStorage() must be implemented by subclass");
+  }
+}
 
 class GoogleDriveStorage extends CloudStorage {
   constructor({ id, auth, folderId }) {
@@ -39,7 +43,6 @@ class GoogleDriveStorage extends CloudStorage {
   async uploadChunk(chunkInfo, filePath) {
     console.log(`[GoogleDriveStorage] Uploading chunk ${chunkInfo.name}...`);
     const drive = google.drive({ version: "v3", auth: this.auth });
-    // Creating a stream for the desired byte range
     const sliceStream = fs.createReadStream(filePath, {
       start: chunkInfo.range.start,
       end: chunkInfo.range.end
@@ -70,10 +73,16 @@ class GoogleDriveStorage extends CloudStorage {
       fileId: chunkInfo.fileId,
       alt: "media"
     }, { responseType: "stream" });
-    return response.data; // returns a stream
+    return response.data;
+  }
+
+  async getAvailableStorage() {
+    const drive = google.drive({ version: "v3", auth: this.auth });
+    const response = await drive.about.get({ fields: "storageQuota" });
+    const storageQuota = response.data.storageQuota;
+    return parseInt(storageQuota.limit) - parseInt(storageQuota.usageInDrive);
   }
 }
-
 
 class DropboxStorage extends CloudStorage {
   constructor({ id, accessToken, basePath }) {
@@ -87,14 +96,12 @@ class DropboxStorage extends CloudStorage {
   async uploadChunk(chunkInfo, filePath) {
     console.log(`[DropboxStorage] Uploading chunk ${chunkInfo.name}...`);
     const fileBuffer = fs.readFileSync(filePath);
-    
     const sliced = Uint8Array.prototype.slice.call(
       fileBuffer,
       chunkInfo.range.start,
       chunkInfo.range.end + 1
     );
     const fileContent = Buffer.from(sliced);
-    // Building the full path – if basePath is empty, this results in '/chunkName'
     const path = `${this.basePath}/${chunkInfo.name}`;
     const response = await this.client.filesUpload({
       path: path,
@@ -112,8 +119,12 @@ class DropboxStorage extends CloudStorage {
   async downloadChunk(chunkInfo) {
     console.log(`[DropboxStorage] Downloading chunk from path ${chunkInfo.path}...`);
     const response = await this.client.filesDownload({ path: chunkInfo.path });
-    // Dropbox returns a Buffer in result.fileBinary
     return response.result.fileBinary;
+  }
+
+  async getAvailableStorage() {
+    const response = await this.client.usersGetSpaceUsage();
+    return response.result.allocation.allocated - response.result.used;
   }
 }
 
