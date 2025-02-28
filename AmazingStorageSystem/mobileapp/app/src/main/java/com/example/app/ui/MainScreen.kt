@@ -334,4 +334,18 @@ fun FilePreviewScreen(fileUrl: String, isChunked: Boolean) {
         }
     }
 }
+// fetching the file from backend
+suspend fun fetchPreviewUrl(fileUrl: String, isChunked: Boolean): String {
+    return withContext(Dispatchers.IO) {
+        try {
+            val previewEndpoint = "https://your-backend.com/preview?url=${URLEncoder.encode(fileUrl, "UTF-8")}&chunked=$isChunked"
+            val response = URL(previewEndpoint).readText()
+            return@withContext previewEndpoint
+        } catch (e: Exception) {
+            Log.e("FilePreview", "Error fetching preview URL", e)
+            ""
+        }
+    }
+}
+
 
