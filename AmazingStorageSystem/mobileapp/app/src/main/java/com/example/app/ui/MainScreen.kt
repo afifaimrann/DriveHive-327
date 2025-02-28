@@ -260,6 +260,7 @@ fun SidebarNavItem(name: String, icon: Int, isSelected: Boolean, onClick: () -> 
         )
     }
 }
+// thumbnail 
 @Composable
 fun Thumbnail(
     type: String,
@@ -292,3 +293,45 @@ fun Thumbnail(
         }
     }
 }
+
+// file preview
+@Composable
+fun FilePreviewScreen(fileUrl: String, isChunked: Boolean) {
+    val context = LocalContext.current
+    val webViewState = rememberWebViewState(url = "")
+    val coroutineScope = rememberCoroutineScope()
+
+    var previewUrl by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(fileUrl) {
+        coroutineScope.launch {
+            val url = fetchPreviewUrl(fileUrl, isChunked)
+            previewUrl = url
+        }
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("File Preview") },
+                actions = {
+                    IconButton(onClick = { downloadFile(context, fileUrl) }) {
+                        Icon(Icons.Default.Download, contentDescription = "Download File")
+                    }
+                }
+            )
+        }
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            if (previewUrl != null) {
+                AndroidView(
+                    factory = { WebView(it).apply { loadUrl(previewUrl!!) } },
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+            }
+        }
+    }
+}
+
