@@ -347,5 +347,16 @@ suspend fun fetchPreviewUrl(fileUrl: String, isChunked: Boolean): String {
         }
     }
 }
+//download and save to device storage
+fun downloadFile(context: Context, fileUrl: String) {
+    val request = DownloadManager.Request(Uri.parse(fileUrl))
+        .setTitle("Downloading File")
+        .setDescription("File is being downloaded...")
+        .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+        .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "downloaded_file")
+
+    val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+    downloadManager.enqueue(request)
+}
 
 
