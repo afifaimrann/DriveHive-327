@@ -1,5 +1,3 @@
-//Complete revamp of code, from 17/02/25-22/02/25
-//Added Dropbox functionalities, dropped OneDrive for revoke of API access
 const express = require("express");
 const app = express();
 const { google } = require("googleapis");
@@ -16,7 +14,8 @@ const {
   UnchunkedFileDownloads,
   DriveChunkedFile,
   DropboxChunkedFile,
-  downloadHandlers
+  downloadHandlers,
+  unchunkedDownloadHandlers
 } = require("./fileHandler");
 
 admin.initializeApp({
@@ -25,7 +24,7 @@ admin.initializeApp({
 
 const db = admin.firestore();
 
-//Bucket options
+// Bucket options
 const cloudAccounts = [
   {
     id: "testDrive",
@@ -82,26 +81,56 @@ const cloudAccounts = [
   },
 ];
 
-//Authenticating each bucket. Needs to be handled by a class if new buckets are added
-cloudAccounts.forEach(account => {
-  if (account.type === "dropbox") {
-    account.client = new Dropbox({ accessToken: account.accessToken, fetch });
-  } else {
+//Defining Authenticator base class, which could be used to add more platforms if needed
+class Authenticator {
+  authenticate(account) {
+    throw new Error("authenticate() must be implemented by subclass");
+  }
+}
+
+//Google Drive bucket Authenticator
+class GoogleDriveAuthenticator extends Authenticator {
+  authenticate(account) {
     account.auth.setCredentials({
       access_token: account.access_token,
     });
   }
+}
+
+//Dropbox bucket Authenticator
+class DropboxAuthenticator extends Authenticator {
+  authenticate(account) {
+    account.client = new Dropbox({ accessToken: account.accessToken, fetch });
+  }
+}
+
+//Mapping of storage types to authenticators, extention available for future platforms
+const authenticatorMapping = {
+  google: GoogleDriveAuthenticator,
+  dropbox: DropboxAuthenticator,
+  //onedrive: OneDriveAuthenticator or so on
+};
+
+//Authenticating each cloud account
+cloudAccounts.forEach(account => {
+  const AuthenticatorClass = authenticatorMapping[account.type];
+  if (!AuthenticatorClass) {
+    throw new Error(`Unsupported cloud account type: ${account.type}`);
+  }
+  const authenticator = new AuthenticatorClass();
+  authenticator.authenticate(account);
 });
 
-//27-02-2025
-/*All our endpoints at first access the serverside classes of our code to do file slicing
-or find the relevant data of the file before downloading. Only once these tasks are handled,
-then the API calls are made for the respective type of functionality needed to be accessed.
-We are using a randomizer to pick a bucket for uploading files, so sometimes it might repeat
-the same bucket while choosing for uploading. Also, even if one account runs out of storage, that gets handled 
-and we look for the next account which could fit the file. If none available terminally,
-we just throw a server error. */
+//Point to be noted
 
+/*Only chunked operations are done at first on the server side, where they are getting sliced, 
+or creating a steam to  pipe into the response object, before triggering the API call directly. Only once
+server side file handling is completed, chunked files are dealt with their respective 
+bucket APIs.
+
+
+Unchunked files are calling APIs directly through the classes here.
+*/
 
 app.post("/upload", upload.single("file"), async (req, res) => {
   const file = req.file;
@@ -121,17 +150,17 @@ app.post("/upload", upload.single("file"), async (req, res) => {
 
     if (fileSize > CHUNK_LIMIT) {
       console.log(`File size ${fileSize} > ${CHUNK_LIMIT}, uploading in chunks...`);
-      const uploader = new ChunkedFileUploads(file, cloudAccounts); //Server side file handling
-      fileMetaData.chunks = await uploader.sliceUpload(); //Files getting sliced and uploaded via API calls
+      const uploader = new ChunkedFileUploads(file, cloudAccounts); // Server side file handling
+      fileMetaData.chunks = await uploader.sliceUpload(); // Files getting sliced, handled and then uploaded via API calls
     } else {
       console.log(`Uploading unchunked file: ${fileName}`);
-      const storageInstances = cloudAccounts.map(account => createCloudStorage(account)); //Creating cloud storage instances to select one at which can fit the file
+      const storageInstances = cloudAccounts.map(account => createCloudStorage(account)); // Creating cloud storage instances to select one which can fit the file
       let selectedStorage = null;
       for (const storage of storageInstances) {
         try {
-          const available = await storage.getAvailableStorage(); //Fetching available storage
+          const available = await storage.getAvailableStorage(); // Fetching available storage
           if (fileSize <= available) {
-            selectedStorage = storage; //Account selected
+            selectedStorage = storage; // Account selected
             break;
           }
         } catch (error) {
@@ -140,21 +169,20 @@ app.post("/upload", upload.single("file"), async (req, res) => {
       }
       if (!selectedStorage) {
         throw new Error("No available storage for the file");
-        //console.log("No available storage for the file");
       }
       const uploadResult = await selectedStorage.uploadChunk({
         name: fileName,
         mimeType: file.mimetype,
         range: { start: 0, end: file.size - 1 }
-      }, file.path); //File details to work with
+      }, file.path); // File details to work with, this is the direct API call.
       fileMetaData.chunks.push({
         ...uploadResult,
         type: uploadResult.type
-      }); //Pushing relevant metadata of the chunks to store for later in firestore
+      }); // Pushing relevant metadata of the chunks to store for later in firestore
     }
 
-    await db.collection("files").add(fileMetaData); //Adding file metadata to firestore
-    fs.unlinkSync(file.path); //Deleting the file from the server
+    await db.collection("files").add(fileMetaData); // Adding file metadata to firestore
+    fs.unlinkSync(file.path); // Deleting the file from the server
 
     res.send({
       message: "File uploaded successfully",
@@ -168,7 +196,7 @@ app.post("/upload", upload.single("file"), async (req, res) => {
 });
 
 app.get("/download", async (req, res) => {
-  const fileName = req.query.fileName; //Prompt the user to enter a file name
+  const fileName = req.query.fileName; // Prompt the user to enter a file name
   console.log(`Received download request for file: ${fileName}`);
 
   if (!fileName) {
@@ -178,7 +206,7 @@ app.get("/download", async (req, res) => {
 
   try {
     console.log("Querying Firestore for file metadata...");
-    //Check if the file exists in firestore database
+    // Check if the file exists in firestore database
     const snapshot = await db.collection("files")
       .where("name", "==", fileName)
       .get();
@@ -192,7 +220,7 @@ app.get("/download", async (req, res) => {
     const fileData = fileDoc.data();
     console.log(`File found: ${fileData.name}, Size: ${fileData.size} bytes, Chunks: ${fileData.chunks.length}`);
 
-    //Seeting necessary headers for the file to be downloaded
+    // Setting necessary headers for the file to be downloaded
     res.setHeader("Content-Disposition", `attachment; filename="${fileData.name}"`);
     res.setHeader("Content-Type", fileData.mimeType);
     res.setHeader("Content-Length", fileData.size);
@@ -201,24 +229,30 @@ app.get("/download", async (req, res) => {
       console.log(`Downloading chunked file: ${fileData.name}`);
       const sortedChunks = fileData.chunks.sort((a, b) => a.offset - b.offset);
 
-      //Sorting the chunks by their offset to determine which chunk comes first
-      //Downloading the chunks one by one
+      // Sorting the chunks by their offset to determine which chunk comes first
+      // Downloading the chunks one by one
       for (const chunk of sortedChunks) {
         console.log(`Processing chunk at offset ${chunk.offset}, type: ${chunk.type}`);
-        const HandlerClass = downloadHandlers[chunk.type]; //A mapper to check what type of chunk is it, which could be modified to add different types of buckets further onwards
+        const HandlerClass = downloadHandlers[chunk.type]; // A mapper to check what type of chunk is it
         if (!HandlerClass) {
           console.error(`Unsupported chunk type: ${chunk.type}`);
           return res.status(500).send(`Unsupported chunk type: ${chunk.type}`);
         }
-        const downloader = new HandlerClass(fileData, cloudAccounts); //Calling the checked type of the bucket, for which classes are already defined
-        await downloader.downloadChunk(chunk, res); //Downloading the chunk
+        const downloader = new HandlerClass(fileData, cloudAccounts); // Calling the checked type of the bucket
+        await downloader.streamChunkToResponse(chunk, res); // Downloading the chunk via server handling of files
       }
       console.log(`Completed downloading all chunks for file: ${fileData.name}`);
       res.end();
     } else {
       console.log(`Downloading unchunked file: ${fileData.name}`);
-      const unchunkedDownloader = new UnchunkedFileDownloads(fileData, cloudAccounts); //Newly added class after demo 2 to handle unchunked files
-      await unchunkedDownloader.downloadFile(res);
+      const singleChunk = fileData.chunks[0];
+      const HandlerClass = unchunkedDownloadHandlers[singleChunk.type]; //Use the unchunked handler mapping
+      if (!HandlerClass) {
+        console.error(`Unsupported file type: ${singleChunk.type}`);
+        return res.status(500).send(`Unsupported file type: ${singleChunk.type}`);
+      }
+      const unchunkedDownloader = new HandlerClass(fileData, cloudAccounts);
+      await unchunkedDownloader.downloadFile(res); // Direct API call
     }
   } catch (error) {
     console.error("Unexpected download error:", error);
