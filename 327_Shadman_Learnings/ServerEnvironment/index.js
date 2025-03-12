@@ -10,6 +10,7 @@ const serviceAccount = require("/Users/shadman/Downloads/firebase_credentials.js
 const { createCloudStorage } = require("./cloudStorageFactory");
 const fs = require("fs");
 //this is a test comment to check if the changes are being reflected in the git repo
+//this is a test comment from my other device to check if the sync is working
 const {
   ChunkedFileUploads,
   UnchunkedFileDownloads,
