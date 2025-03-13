@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <group android:checkableBehavior="single">
+        <item
+            android:id="@+id/nav_google"
+            android:title="@string/google_accounts"
+            android:icon="@drawable/google"/>
+            
+        <item
+            android:id="@+id/nav_dropbox"
+            android:title="@string/dropbox_accounts"
+            android:icon="@drawable/dropbox"/>
+            
+        <item
+            android:id="@+id/nav_chatbot"
+            android:title="@string/chatbot"
+            android:icon="@drawable/chatbot"/>
+            
+        <item
+            android:id="@+id/nav_logout"
+            android:title="@string/logout"
+            android:icon="@drawable/logout"/>
+    </group>
+</menu>
