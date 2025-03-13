@@ -1,5 +1,6 @@
 const express = require("express");
 const app = express();
+const TelegramBot = require("node-telegram-bot-api");
 const { google } = require("googleapis");
 const { Dropbox } = require("dropbox");
 const fetch = require("node-fetch");
@@ -9,8 +10,14 @@ const upload = multer({ dest: "uploads/" });
 const serviceAccount = require("/Users/shadman/Downloads/firebase_credentials.json");
 const { createCloudStorage } = require("./cloudStorageFactory");
 const fs = require("fs");
-//this is a test comment to check if the changes are being reflected in the git repo
-//this is a test comment from my other device to check if the sync is working
+const path = require("path");
+
+const downloadsDir = path.join(__dirname, "downloads");
+fs.mkdirSync(downloadsDir, { recursive: true });
+
+const uploadsDir = path.join(__dirname, "uploads");
+fs.mkdirSync(uploadsDir, { recursive: true });
+
 const {
   ChunkedFileUploads,
   UnchunkedFileDownloads,
@@ -20,11 +27,188 @@ const {
   unchunkedDownloadHandlers
 } = require("./fileHandler");
 
+// Initialize Firebase
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount)
 });
-
 const db = admin.firestore();
+
+// Telegram Bot Setup
+const token = "TELEGRAM_BOT_ACCES_TOKEN"; // Replace with your BotFather token
+const bot = new TelegramBot(token, { polling: false }); // Webhook, not polling
+
+// Middleware to parse JSON bodies (for webhook)
+app.use(express.json());
+
+// Webhook endpoint for Telegram updates
+app.post("/telegram-webhook", (req, res) => {
+  bot.processUpdate(req.body);
+  res.sendStatus(200);
+});
+
+// Set webhook (run this once or on server start)
+const webhookUrl = "https://31d5-59-153-102-203.ngrok-free.app/telegram-webhook"; // Replace with ngrok or deployed URL
+bot.setWebHook(webhookUrl).then(() => {
+  console.log(`Webhook set to ${webhookUrl}`);
+}).catch(err => {
+  console.error("Error setting webhook:", err);
+});
+
+// Handle /upload command
+bot.onText(/\/upload/, (msg) => {
+  const chatId = msg.chat.id;
+  bot.sendMessage(chatId, "Please send the file you want to upload.");
+});
+
+// Handle file uploads
+bot.on("document", async (msg) => {
+  const chatId = msg.chat.id;
+  const fileId = msg.document.file_id;
+  const fileName = msg.document.file_name;
+  const fileSize = msg.document.file_size;
+
+  let tempFilePath; // Declare tempFilePath outside the try block
+
+  try {
+    // Get file URL from Telegram
+    const file = await bot.getFile(fileId);
+    const fileUrl = `https://api.telegram.org/file/bot${token}/${file.file_path}`;
+    
+    // Download file to server
+    const response = await fetch(fileUrl);
+    const buffer = await response.buffer();
+    tempFilePath = `uploads/${fileName}`; // Assign value here
+    fs.writeFileSync(tempFilePath, buffer);
+
+    // Reuse your upload logic
+    const fileMetaData = {
+      name: fileName,
+      size: fileSize,
+      uploadedAt: new Date().toISOString(),
+      mimeType: msg.document.mime_type,
+      isChunked: fileSize > 200 * 1024 * 1024, // 200MB threshold
+      chunks: []
+    };
+
+    if (fileMetaData.isChunked) {
+      const uploader = new ChunkedFileUploads(
+        { path: tempFilePath, originalname: fileName, size: fileSize, mimetype: msg.document.mime_type },
+        cloudAccounts
+      );
+      fileMetaData.chunks = await uploader.sliceUpload();
+    } else {
+      const storageInstances = cloudAccounts.map(account => createCloudStorage(account));
+      let selectedStorage = null;
+      for (const storage of storageInstances) {
+        const available = await storage.getAvailableStorage();
+        if (fileSize <= available) {
+          selectedStorage = storage;
+          break;
+        }
+      }
+      if (!selectedStorage) throw new Error("No available storage");
+      const uploadResult = await selectedStorage.uploadChunk(
+        {
+          name: fileName,
+          mimeType: msg.document.mime_type,
+          range: { start: 0, end: fileSize - 1 }
+        },
+        tempFilePath
+      );
+      fileMetaData.chunks.push({ ...uploadResult, type: uploadResult.type });
+    }
+
+    await db.collection("files").add(fileMetaData);
+    fs.unlinkSync(tempFilePath); // Clean up after successful upload
+    bot.sendMessage(chatId, `File "${fileName}" uploaded successfully!`);
+  } catch (error) {
+    if (tempFilePath) { // Only attempt cleanup if tempFilePath was assigned
+      fs.unlinkSync(tempFilePath);
+    }
+    console.error("Upload error:", error);
+    bot.sendMessage(chatId, `Error uploading file: ${error.message}`);
+  }
+});
+
+// Handle /download command
+bot.onText(/\/download (.+)/, async (msg, match) => {
+  const chatId = msg.chat.id;
+  const fileName = match[1];
+
+  try {
+    const snapshot = await db.collection("files").where("name", "==", fileName).get();
+    if (snapshot.empty) {
+      bot.sendMessage(chatId, `File "${fileName}" not found.`);
+      return;
+    }
+
+    const fileData = snapshot.docs[0].data();
+    if (fileData.size > 50 * 1024 * 1024) {
+      bot.sendMessage(chatId, "File too large for Telegram (>50MB). Use the website/app for larger files.");
+      return;
+    }
+
+    // Use a unique temporary file name
+    const tempFileName = `${Date.now()}-${fileName}`;
+    const tempFilePath = path.join(downloadsDir, tempFileName);
+    const writeStream = fs.createWriteStream(tempFilePath);
+
+    // Handle write stream errors
+    writeStream.on('error', (err) => {
+      console.error("Write stream error:", err);
+      bot.sendMessage(chatId, "Error preparing download.");
+      if (fs.existsSync(tempFilePath)) {
+        fs.unlinkSync(tempFilePath);
+      }
+    });
+
+    if (fileData.isChunked) {
+      const sortedChunks = fileData.chunks.sort((a, b) => a.offset - b.offset);
+      for (const chunk of sortedChunks) {
+        const HandlerClass = downloadHandlers[chunk.type];
+        const downloader = new HandlerClass(fileData, cloudAccounts);
+        await new Promise((resolve, reject) => {
+          downloader.streamChunkToResponse(chunk, writeStream);
+          writeStream.on("finish", resolve).on("error", reject);
+        });
+      }
+    } else {
+      const singleChunk = fileData.chunks[0];
+      const HandlerClass = unchunkedDownloadHandlers[singleChunk.type];
+      const unchunkedDownloader = new HandlerClass(fileData, cloudAccounts);
+      await unchunkedDownloader.downloadFile(writeStream);
+    }
+
+    writeStream.end();
+    await bot.sendDocument(chatId, tempFilePath);
+    fs.unlinkSync(tempFilePath);
+  } catch (error) {
+    console.error("Download error:", error);
+    bot.sendMessage(chatId, `Error downloading file: ${error.message}`);
+    if (fs.existsSync(tempFilePath)) {
+      fs.unlinkSync(tempFilePath);
+    }
+  }
+});
+
+// Handle /list command
+bot.onText(/\/list/, async (msg) => {
+  const chatId = msg.chat.id;
+  try {
+    const snapshot = await db.collection("files").get();
+    const fileNames = snapshot.docs.map(doc => doc.data().name);
+    if (fileNames.length === 0) {
+      bot.sendMessage(chatId, "No files available.");
+    } else {
+      bot.sendMessage(chatId, "Available files:\n" + fileNames.join("\n"));
+    }
+  } catch (error) {
+    console.error("List error:", error);
+    bot.sendMessage(chatId, "Error retrieving file list.");
+  }
+});
+
+// Your existing cloudAccounts and authenticator code remains unchanged here
 
 // Bucket options
 const cloudAccounts = [
