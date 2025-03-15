@@ -34,7 +34,7 @@ admin.initializeApp({
 const db = admin.firestore();
 
 // Telegram Bot Setup
-const token = "TELEGRAM_BOT_ACCES_TOKEN"; // Replace with your BotFather token
+const token = "TELEGRAM_BOT_ACCESS_TOKEN"; // Replace with your BotFather token
 const bot = new TelegramBot(token, { polling: false }); // Webhook, not polling
 
 // Middleware to parse JSON bodies (for webhook)
@@ -47,11 +47,32 @@ app.post("/telegram-webhook", (req, res) => {
 });
 
 // Set webhook (run this once or on server start)
-const webhookUrl = "https://31d5-59-153-102-203.ngrok-free.app/telegram-webhook"; // Replace with ngrok or deployed URL
+const webhookUrl = "https://fd21-103-180-245-255.ngrok-free.app/telegram-webhook"; // Replace with ngrok or deployed URL
 bot.setWebHook(webhookUrl).then(() => {
   console.log(`Webhook set to ${webhookUrl}`);
 }).catch(err => {
   console.error("Error setting webhook:", err);
+});
+
+bot.onText(/\/start/, async (msg) => {
+  const chatId = msg.chat.id;
+  const userId = msg.from.id.toString(); // Convert to string for Firestore compatibility
+
+  // Reference to the user's document in the 'users' collection
+  const userRef = db.collection('users').doc(userId);
+  const userDoc = await userRef.get();
+
+  if (!userDoc.exists) {
+    // New user: register them
+    await userRef.set({
+      telegramId: userId,
+      createdAt: new Date().toISOString()
+    });
+    bot.sendMessage(chatId, "Welcome! You’ve been registered with our service.");
+  } else {
+    // Existing user
+    bot.sendMessage(chatId, "Welcome back!");
+  }
 });
 
 // Handle /upload command
@@ -60,33 +81,29 @@ bot.onText(/\/upload/, (msg) => {
   bot.sendMessage(chatId, "Please send the file you want to upload.");
 });
 
-// Handle file uploads
 bot.on("document", async (msg) => {
   const chatId = msg.chat.id;
+  const userId = msg.from.id.toString(); // Get the user ID
   const fileId = msg.document.file_id;
   const fileName = msg.document.file_name;
   const fileSize = msg.document.file_size;
 
-  let tempFilePath; // Declare tempFilePath outside the try block
+  let tempFilePath;
 
   try {
-    // Get file URL from Telegram
     const file = await bot.getFile(fileId);
     const fileUrl = `https://api.telegram.org/file/bot${token}/${file.file_path}`;
-    
-    // Download file to server
     const response = await fetch(fileUrl);
     const buffer = await response.buffer();
-    tempFilePath = `uploads/${fileName}`; // Assign value here
+    tempFilePath = `uploads/${fileName}`;
     fs.writeFileSync(tempFilePath, buffer);
 
-    // Reuse your upload logic
     const fileMetaData = {
       name: fileName,
       size: fileSize,
       uploadedAt: new Date().toISOString(),
       mimeType: msg.document.mime_type,
-      isChunked: fileSize > 200 * 1024 * 1024, // 200MB threshold
+      isChunked: fileSize > 200 * 1024 * 1024,
       chunks: []
     };
 
@@ -118,48 +135,47 @@ bot.on("document", async (msg) => {
       fileMetaData.chunks.push({ ...uploadResult, type: uploadResult.type });
     }
 
-    await db.collection("files").add(fileMetaData);
-    fs.unlinkSync(tempFilePath); // Clean up after successful upload
+    // Store in user's files subcollection instead of root 'files'
+    const userRef = db.collection('users').doc(userId);
+    await userRef.collection('files').add(fileMetaData);
+
+    fs.unlinkSync(tempFilePath);
     bot.sendMessage(chatId, `File "${fileName}" uploaded successfully!`);
   } catch (error) {
-    if (tempFilePath) { // Only attempt cleanup if tempFilePath was assigned
-      fs.unlinkSync(tempFilePath);
-    }
+    if (tempFilePath) fs.unlinkSync(tempFilePath);
     console.error("Upload error:", error);
     bot.sendMessage(chatId, `Error uploading file: ${error.message}`);
   }
 });
 
-// Handle /download command
 bot.onText(/\/download (.+)/, async (msg, match) => {
   const chatId = msg.chat.id;
+  const userId = msg.from.id.toString();
   const fileName = match[1];
 
   try {
-    const snapshot = await db.collection("files").where("name", "==", fileName).get();
-    if (snapshot.empty) {
-      bot.sendMessage(chatId, `File "${fileName}" not found.`);
+    const userRef = db.collection('users').doc(userId);
+    const filesSnapshot = await userRef.collection('files').where("name", "==", fileName).get();
+
+    if (filesSnapshot.empty) {
+      bot.sendMessage(chatId, `File "${fileName}" not found in your files.`);
       return;
     }
 
-    const fileData = snapshot.docs[0].data();
+    const fileData = filesSnapshot.docs[0].data();
     if (fileData.size > 50 * 1024 * 1024) {
       bot.sendMessage(chatId, "File too large for Telegram (>50MB). Use the website/app for larger files.");
       return;
     }
 
-    // Use a unique temporary file name
     const tempFileName = `${Date.now()}-${fileName}`;
     const tempFilePath = path.join(downloadsDir, tempFileName);
     const writeStream = fs.createWriteStream(tempFilePath);
 
-    // Handle write stream errors
     writeStream.on('error', (err) => {
       console.error("Write stream error:", err);
       bot.sendMessage(chatId, "Error preparing download.");
-      if (fs.existsSync(tempFilePath)) {
-        fs.unlinkSync(tempFilePath);
-      }
+      if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath);
     });
 
     if (fileData.isChunked) {
@@ -180,31 +196,33 @@ bot.onText(/\/download (.+)/, async (msg, match) => {
     }
 
     writeStream.end();
+    await bot.sendMessage(chatId, "Here’s your file:");
     await bot.sendDocument(chatId, tempFilePath);
     fs.unlinkSync(tempFilePath);
   } catch (error) {
     console.error("Download error:", error);
     bot.sendMessage(chatId, `Error downloading file: ${error.message}`);
-    if (fs.existsSync(tempFilePath)) {
-      fs.unlinkSync(tempFilePath);
-    }
+    if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath);
   }
 });
 
-// Handle /list command
 bot.onText(/\/list/, async (msg) => {
   const chatId = msg.chat.id;
+  const userId = msg.from.id.toString();
+
   try {
-    const snapshot = await db.collection("files").get();
-    const fileNames = snapshot.docs.map(doc => doc.data().name);
+    const userRef = db.collection('users').doc(userId);
+    const filesSnapshot = await userRef.collection('files').get();
+    const fileNames = filesSnapshot.docs.map(doc => doc.data().name);
+
     if (fileNames.length === 0) {
-      bot.sendMessage(chatId, "No files available.");
+      bot.sendMessage(chatId, "You haven’t uploaded any files yet.");
     } else {
-      bot.sendMessage(chatId, "Available files:\n" + fileNames.join("\n"));
+      bot.sendMessage(chatId, "Your files:\n" + fileNames.join("\n"));
     }
   } catch (error) {
     console.error("List error:", error);
-    bot.sendMessage(chatId, "Error retrieving file list.");
+    bot.sendMessage(chatId, "Error retrieving your file list.");
   }
 });
 
