@@ -143,13 +143,13 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
         }
     }
 
-    private fun setupSearchView() {
+    /*private fun setupSearchView() {
         (binding.searchView as SearchView).setOnQueryTextListener(object : SearchView.OnQueryTextListener {
             override fun onQueryTextSubmit(query: String?) = true
             override fun onQueryTextChange(newText: String?) = false
         })
     }
-
+*/
     private fun setupDownloadButton() {
         binding.btnDownload.setOnClickListener {
             binding.etDownloadFilename.text.toString().takeIf { it.isNotEmpty() }?.let { fileName ->
@@ -157,7 +157,7 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
             }
         }
     }
-
+ // Unable to integrate the server 'index.js' here, need help
     // Upload to Server
 private fun handleFileSelection(uri: Uri) {
     val inputStream = contentResolver.openInputStream(uri)
@@ -172,7 +172,7 @@ private fun handleFileSelection(uri: Uri) {
         }
     }
 }
-   / Download from Server
+   // Download from Server
 private fun downloadFile(fileName: String) {
     CoroutineScope(Dispatchers.IO).launch {
         try {
