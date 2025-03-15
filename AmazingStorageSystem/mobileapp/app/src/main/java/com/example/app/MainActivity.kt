@@ -48,8 +48,8 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
     private val filePicker = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri?.let { handleFileSelection(it) }
     }
-    private val RC_GOOGLE_SIGN_IN = 123
-    private val RC_DROPBOX_AUTH = 456
+    private val RC_GOOGLE_SIGN_IN = 
+    private val RC_DROPBOX_AUTH = 
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
