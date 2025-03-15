@@ -2,33 +2,45 @@ package com.example.storeit
 
 import android.content.Intent
 import android.net.Uri
-import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.ActionBarDrawerToggle
+import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.GravityCompat
 import androidx.recyclerview.widget.LinearLayoutManager
-import com.bumptech.glide.Glide
 import com.example.storeit.databinding.ActivityMainBinding
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.android.gms.common.api.ApiException
+import com.google.android.gms.common.api.Scope
 import com.google.android.material.navigation.NavigationView
+import com.google.api.services.drive.Drive
+import com.google.api.services.drive.model.File
+import com.google.auth.http.HttpCredentialsAdapter
+import com.google.cloud.firestore.Firestore
+import com.google.firebase.auth.FirebaseAuth
+import com.dropbox.core.DbxRequestConfig
+import com.dropbox.core.DbxWebAuth
+import com.dropbox.core.v2.DbxClientV2
+import java.util.*
+import android.widget.Button
+import androidx.appcompat.widget.SearchView
+import io.ktor.http.*
 import io.ktor.server.application.*
+import io.ktor.server.plugins.multipart.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
-import io.ktor.server.plugins.multipart.*
-import io.ktor.utils.io.*
-import com.google.cloud.firestore.*
-import com.google.api.services.drive.*
-import com.google.api.services.drive.model.*
-import com.google.auth.http.HttpCredentialsAdapter
-import com.google.auth.oauth2.GoogleCredentials
-import java.io.*
-import java.util.*
-import kotlinx.coroutines.*
-import java.nio.file.*
+import kotlinx.coroutines.await
+import java.io.OutputStream
+import com.google.api.client.http.javanet.NetHttpTransport
+import com.google.api.client.json.jackson2.JacksonFactory
+import com.google.api.client.http.AbstractInputStreamContent
+import com.google.api.client.http.FileContent
+import com.google.api.services.drive.model.FileList
 
 class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelectedListener {
 
@@ -36,13 +48,18 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
     private val filePicker = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri?.let { handleFileSelection(it) }
     }
+    private val RC_GOOGLE_SIGN_IN = 123
+    private val RC_DROPBOX_AUTH = 456
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // Setup action bar toggle
+        // Authentication setup
+        setupAuthButtons()
+
+        // Navigation drawer setup
         val toggle = ActionBarDrawerToggle(
             this,
             binding.drawerLayout,
@@ -52,363 +69,128 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
         )
         binding.drawerLayout.addDrawerListener(toggle)
         toggle.syncState()
-
-        // Setup navigation view
         binding.navView.setNavigationItemSelectedListener(this)
 
-        // Setup file list
+        // File management setup
         setupFileList()
+        binding.fabUpload.setOnClickListener { filePicker.launch("*/*") }
+        setupSearchView()
+        setupDownloadButton()
+    }
 
-        // Setup FAB click listener
-        binding.fabUpload.setOnClickListener {
-            filePicker.launch("*/*")
+    private fun setupAuthButtons() {
+        findViewById<Button>(R.id.btn_google).setOnClickListener { signInWithGoogle() }
+        findViewById<Button>(R.id.btn_dropbox).setOnClickListener { signInWithDropbox() }
+        findViewById<Button>(R.id.btn_telegram).setOnClickListener { /* Telegram implementation */ }
+    }
+
+    private fun signInWithGoogle() {
+        val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+            .requestEmail()
+            .requestScopes(Scope("https://www.googleapis.com/auth/drive.file"))
+            .build()
+        GoogleSignIn.getClient(this, gso).signInIntent.also {
+            startActivityForResult(it, RC_GOOGLE_SIGN_IN)
         }
+    }
 
-        // Setup search view
-        /*binding.searchView.setOnQueryTextListener(object : androidx.appcompat.widget.SearchView.OnQueryTextListener {
-            override fun onQueryTextSubmit(query: String?): Boolean {
-                query?.let { performSearch(it) }
-                return true
+    private fun signInWithDropbox() {
+        val dbxAuth = DbxWebAuth.newRequestBuilder()
+            .withNoRedirect()
+            .build(DbxRequestConfig("your_app_name"))
+        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(dbxAuth.authorize(DbxWebAuth.newRequestBuilder().build()))))
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        when (requestCode) {
+            RC_GOOGLE_SIGN_IN -> handleGoogleSignInResult(data)
+            RC_DROPBOX_AUTH -> handleDropboxSignInResult(data)
+        }
+    }
+
+    private fun handleGoogleSignInResult(data: Intent?) {
+        try {
+            GoogleSignIn.getSignedInAccountFromIntent(data).getResult(ApiException::class.java)?.let {
+                mergeGoogleStorage(it)
             }
+        } catch (e: ApiException) {
+            // Handle error
+        }
+    }
 
-            override fun onQueryTextChange(newText: String?): Boolean {
-                return false
-            }
-        })*/
+    private fun handleDropboxSignInResult(data: Intent?) {
+        data?.getStringExtra("access_token")?.let {
+            mergeDropboxStorage(it)
+        }
+    }
 
-        // Setup download button
+    private fun mergeGoogleStorage(account: GoogleSignInAccount) {
+        // Implement Google Drive integration
+    }
+
+    private fun mergeDropboxStorage(accessToken: String) {
+        DbxClientV2(DbxRequestConfig("your_app_name"), accessToken).let {
+            // Implement Dropbox integration
+        }
+    }
+
+    // Remaining file management functions
+    private fun setupFileList() {
+        binding.rvFiles.apply {
+            layoutManager = LinearLayoutManager(this@MainActivity)
+            adapter = FileAdapter(listOf("Document1.pdf", "Image.jpg", "Report.docx"))
+        }
+    }
+
+    private fun setupSearchView() {
+        (binding.searchView as SearchView).setOnQueryTextListener(object : SearchView.OnQueryTextListener {
+            override fun onQueryTextSubmit(query: String?) = true
+            override fun onQueryTextChange(newText: String?) = false
+        })
+    }
+
+    private fun setupDownloadButton() {
         binding.btnDownload.setOnClickListener {
-            val fileName = binding.etDownloadFilename.text.toString()
-            if (fileName.isNotEmpty()) {
+            binding.etDownloadFilename.text.toString().takeIf { it.isNotEmpty() }?.let { fileName ->
                 downloadFile(fileName)
             }
         }
     }
 
-    private fun setupFileList() {
-        val files = listOf(
-            "Document1.pdf",
-            "Image.jpg",
-            "Report.docx",
-            "Presentation.pptx",
-            "Data.xlsx"
-        )
+    // Upload to Server
+private fun handleFileSelection(uri: Uri) {
+    val inputStream = contentResolver.openInputStream(uri)
+    val file = inputStream?.readBytes()
 
-        binding.rvFiles.layoutManager = LinearLayoutManager(this)
-        binding.rvFiles.adapter = FileAdapter(files)
-    }
-
-       private fun Application.configureRouting(
-    db: Firestore,
-    driveAccounts: List<DriveAccount>,
-    chunkLimit: Long = 600 * 1024 * 1024 // 600MB in bytes
-) {
-    routing {
-        post("/upload") {
-            val multipartData = call.receiveMultipart()
-            var file: PartData.FileItem? = null
-            
-            multipartData.forEachPart { part ->
-                if (part is PartData.FileItem) {
-                    file = part
-                }
-            }
-            
-            file?.let { uploadedFile ->
-                val fileName = uploadedFile.originalFileName!!
-                val fileSize = uploadedFile.content.available().toLong()
-                
-                if (fileSize > chunkLimit) {
-                    call.chunkedUpload(uploadedFile, fileName, fileSize, db, driveAccounts)
-                } else {
-                    call.simpleUpload(uploadedFile, fileName, fileSize, db, driveAccounts)
-                }
-            } ?: run {
-                call.respond(HttpStatusCode.BadRequest, "No file uploaded")
-            }
-        }
-        
-        get("/files") {
-            call.listFiles(db)
-        }
-    }
-}
-
-private suspend fun ApplicationCall.chunkedUpload(
-    uploadedFile: PartData.FileItem,
-    fileName: String,
-    fileSize: Long,
-    db: Firestore,
-    driveAccounts: List<DriveAccount>
-) {
-    try {
-        val chunkUploads = sliceDriveFunction(uploadedFile)
-        
-        val fileMetaData = mapOf(
-            "name" to fileName,
-            "size" to fileSize,
-            "uploadedAt" to Date().time,
-            "isChunked" to true,
-            "chunks" to chunkUploads,
-            "mimeType" to uploadedFile.contentType?.toString() ?: "application/octet-stream"
-        )
-        
-        db.collection("files").add(fileMetaData).await()
-        uploadedFile.dispose()
-        
-        respond(mapOf(
-            "message" to "File upload success in chunks.",
-            "chunks" to chunkUploads
-        ))
-    } catch (e: Exception) {
-        println("Error during chunked upload: $e")
-        respond(HttpStatusCode.InternalServerError, "Error uploading file in chunks")
-    }
-}
-
-private suspend fun ApplicationCall.simpleUpload(
-    uploadedFile: PartData.FileItem,
-    fileName: String,
-    fileSize: Long,
-    db: Firestore,
-    driveAccounts: List<DriveAccount>
-) {
-    val driveAccount = getDriveWithSpace(fileSize, driveAccounts)
-    
-    if (driveAccount != null) {
-        val drive = Drive.Builder(
-            NetHttpTransport(),
-            JacksonFactory.getDefaultInstance(),
-            HttpCredentialsAdapter(driveAccount.auth)
-        ).setApplicationName("Your Application Name").build()
-        
+    CoroutineScope(Dispatchers.IO).launch {
         try {
-            val mediaContent = FileContent(uploadedFile.contentType?.toString(), uploadedFile.contentChannel)
-            val createRequest = drive.files().create(
-                File().apply {
-                    this.name = fileName
-                    mimeType = uploadedFile.contentType?.toString()
-                    parents = listOf(driveAccount.folderId)
-                },
-                mediaContent
-            ).setSupportsAllDrives(true)
-            
-            val response = createRequest.execute()
-            
-            val fileMetaData = mapOf(
-                "name" to fileName,
-                "size" to fileSize,
-                "uploadedAt" to Date().time,
-                "isChunked" to false,
-                "driveId" to driveAccount.id,
-                "googleDrivefileId" to response.id,
-                "mimeType" to uploadedFile.contentType?.toString() ?: "application/octet-stream",
-                "downloadUrl" to "https://drive.google.com/file/d/${response.id}/view"
-            )
-            
-            db.collection("files").add(fileMetaData).await()
-            uploadedFile.dispose()
-            
-            respond(response)
+            val response = RetrofitClient.apiService.uploadFile(file!!)
+            runOnUiThread { showToast("Upload successful!") }
         } catch (e: Exception) {
-            println("Error during simple upload: $e")
-            respond(HttpStatusCode.InternalServerError, "Error uploading file")
+            runOnUiThread { showToast("Upload failed: ${e.message}") }
         }
-    } else {
-        // Edge case handler
+    }
+}
+   / Download from Server
+private fun downloadFile(fileName: String) {
+    CoroutineScope(Dispatchers.IO).launch {
         try {
-            val chunkUploads = sliceDriveFunction(uploadedFile)
-            
-            val fileMetaData = mapOf(
-                "name" to fileName,
-                "size" to fileSize,
-                "uploadedAt" to Date().time,
-                "isChunked" to true,
-                "chunks" to chunkUploads,
-                "mimeType" to uploadedFile.contentType?.toString() ?: "application/octet-stream"
-            )
-            
-            db.collection("files").add(fileMetaData).await()
-            uploadedFile.dispose()
-            
-            respond(mapOf("chunks" to chunkUploads))
+            val fileBytes = RetrofitClient.apiService.downloadFile(fileName)
+            saveFileLocally(fileBytes)
+            runOnUiThread { showToast("Download complete!") }
         } catch (e: Exception) {
-            println("Error during edge case upload: $e")
-            respond(HttpStatusCode.InternalServerError, "Error edge case trigger")
+            runOnUiThread { showToast("Download failed: ${e.message}") }
         }
     }
 }
 
-private suspend fun ApplicationCall.listFiles(db: Firestore) {
-    try {
-        val snapshot = db.collection("files").get().await()
-        val fileNames = snapshot.documents.mapNotNull { it.get("name") as? String }
-        
-        respond(mapOf("files" to fileNames))
-    } catch (e: Exception) {
-        println("Error retrieving files: $e")
-        respond(HttpStatusCode.InternalServerError, "Error retrieving files")
-    }
-}
-
-// Helper functions would need to be implemented based on specific requirements
-suspend fun sliceDriveFunction(file: PartData.FileItem): List<Any> {
-    // Implement chunking logic here
-    TODO("Implement chunking logic")
-}
-
-fun getDriveWithSpace(fileSize: Long, driveAccounts: List<DriveAccount>): DriveAccount? {
-    
-    TODO("Implement drive account selection logic")
-}
-
-data class DriveAccount(
-    val id: String,
-    val auth: GoogleCredentials,
-    val folderId: String
-)
-    }
-
-    private fun performSearch(query: String) {
-        // Implement search functionality
-    }
-
-   fun Route.downloadRoute(db: Firestore, driveAccounts: List<DriveAccount>) {
-    get("/download") {
-        val fileName = call.request.queryParameters["fileName"]
-        if (fileName == null) {
-            call.respond(HttpStatusCode.BadRequest, "fileName query parameter is required")
-            return@get
-        }
-
-        try {
-            val snapshot = db.collection("files")
-                .whereEqualTo("name", fileName)
-                .get()
-                .await()
-
-            if (snapshot.isEmpty) {
-                call.respond(HttpStatusCode.NotFound, "File not found")
-                return@get
-            }
-
-            val fileDoc = snapshot.documents.first()
-            val fileData = fileDoc.toObject(FileData::class.java)!!
-
-            call.response.header("Content-Disposition", "attachment; filename=\"${fileData.name}\"")
-            call.response.header("Content-Type", fileData.mimeType)
-            call.response.header("Content-Length", fileData.size.toString())
-
-            if (fileData.isChunked) {
-                val sortedChunks = fileData.chunks.sortedWith(compareBy { it.offset })
-                
-                val outputStream = call.response.outputStreamWriter().outputStream
-                val chunksStream = object : OutputStream() {
-                    override fun write(b: Int) = outputStream.write(b)
-                }
-
-                for (chunk in sortedChunks) {
-                    val driveAccount = driveAccounts.find { it.id == chunk.driveId }
-                    if (driveAccount == null) {
-                        call.respond(HttpStatusCode.InternalServerError, "Associated Drive account not found for a chunk")
-                        return@get
-                    }
-
-                    val drive = Drive.Builder(
-                        NetHttpTransport(),
-                        JacksonFactory.getDefaultInstance(),
-                        driveAccount.auth
-                    ).setApplicationName("Your App Name").build()
-
-                    val request = drive.files().get(chunk.googleDrivefileId)
-                        .setAlt("media")
-                    
-                    val mediaHttpDownloader = request.mediaHttpDownloader
-                    mediaHttpDownloader.progressListener = object : AbstractInputStreamContent.MediaProgressListener {
-                        override fun progressChanged(progress: MediaHttpDownloader.Progress) {
-                            if (progress.state == MediaHttpDownloader.Progress.State.DONE) {
-                                println("Finished downloading chunk \"${chunk.sliceName}\"")
-                            }
-                        }
-                    }
-
-                    val inputStream = request.executeMediaAsInputStream()
-                    inputStream.copyTo(chunksStream)
-                    inputStream.close()
-                }
-                chunksStream.close()
-            } else {
-                val driveAccount = driveAccounts.find { it.id == fileData.driveId }
-                if (driveAccount == null) {
-                    call.respond(HttpStatusCode.InternalServerError, "Associated Drive account not found")
-                    return@get
-                }
-
-                val drive = Drive.Builder(
-                    NetHttpTransport(),
-                    JacksonFactory.getDefaultInstance(),
-                    driveAccount.auth
-                ).setApplicationName("Your App Name").build()
-
-                val request = drive.files().get(fileData.googleDrivefileId)
-                    .setAlt("media")
-                
-                val mediaHttpDownloader = request.mediaHttpDownloader
-                mediaHttpDownloader.progressListener = object : AbstractInputStreamContent.MediaProgressListener {
-                    override fun progressChanged(progress: MediaHttpDownloader.Progress) {
-                        if (progress.state == MediaHttpDownloader.Progress.State.EXCEPTION) {
-                            println("Error streaming file: ${progress.exception}")
-                        }
-                    }
-                }
-
-                val inputStream = request.executeMediaAsInputStream()
-                call.respondOutputStream {
-                    inputStream.copyTo(this)
-                }
-            }
-        } catch (e: Exception) {
-            println("Download error: $e")
-            call.respond(HttpStatusCode.InternalServerError, "Internal server error")
-        }
-    }
-}
-
-data class DriveAccount(
-    val id: String,
-    val auth: HttpRequestInitializer
-)
-
-data class FileData(
-    val name: String,
-    val mimeType: String,
-    val size: Long,
-    val isChunked: Boolean,
-    val chunks: List<Chunk>?,
-    val driveId: String?,
-    val googleDrivefileId: String
-)
-
-data class Chunk(
-    val offset: Long,
-    val sliceName: String,
-    val driveId: String,
-    val googleDrivefileId: String
-)
     override fun onNavigationItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
-            R.id.nav_google -> {
-                // Handle Google account selection
-            }
-            R.id.nav_dropbox -> {
-                // Handle Dropbox account selection
-            }
-            R.id.nav_chatbot -> {
-                // Handle chatbot navigation
-            }
-            R.id.nav_logout -> {
-                // Handle logout
-            }
+            R.id.nav_google -> {}
+            R.id.nav_dropbox -> {}
+            R.id.nav_chatbot -> {}
+            R.id.nav_logout -> {}
         }
         binding.drawerLayout.closeDrawer(GravityCompat.START)
         return true
@@ -423,23 +205,35 @@ data class Chunk(
     }
 }
 
+// Server-side components (should be in separate module)
+fun Application.configureRouting(db: Firestore, driveAccounts: List<DriveAccount>) {
+    routing {
+        post("/upload") { handleUpload(db, driveAccounts) }
+        get("/files") { listFiles(db) }
+        get("/download") { downloadFile(db, driveAccounts) }
+    }
+}
+// Save to device storage
+private fun saveFileLocally(bytes: ByteArray) {
+    val file = File(getExternalFilesDir(null), "downloaded_file")
+    FileOutputStream(file).use { it.write(bytes) }
+}
+// FileAdapter and data classes
 class FileAdapter(private val files: List<String>) : androidx.recyclerview.widget.RecyclerView.Adapter<FileAdapter.ViewHolder>() {
-
-    override fun onCreateViewHolder(parent: android.view.ViewGroup, viewType: Int): ViewHolder {
-        val view = android.view.LayoutInflater.from(parent.context)
-            .inflate(R.layout.item_file, parent, false)
-        return ViewHolder(view)
-    }
-
-    override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-        holder.bind(files[position])
-    }
-
+    override fun onCreateViewHolder(parent: android.view.ViewGroup, viewType: Int) = 
+        ViewHolder(android.view.LayoutInflater.from(parent.context).inflate(R.layout.item_file, parent, false))
+    
+    override fun onBindViewHolder(holder: ViewHolder, position: Int) = holder.bind(files[position])
     override fun getItemCount() = files.size
 
     inner class ViewHolder(view: View) : androidx.recyclerview.widget.RecyclerView.ViewHolder(view) {
         fun bind(fileName: String) {
-            itemView.tv_file_name.text = fileName
+            (itemView as android.widget.TextView).text = fileName
         }
     }
 }
+
+data class DriveAccount(val id: String, val auth: HttpCredentialsAdapter, val folderId: String)
+data class FileData(val name: String, val mimeType: String, val size: Long, val isChunked: Boolean, 
+                   val chunks: List<Chunk>?, val driveId: String?, val googleDrivefileId: String)
+data class Chunk(val offset: Long, val sliceName: String, val driveId: String, val googleDrivefileId: String)
