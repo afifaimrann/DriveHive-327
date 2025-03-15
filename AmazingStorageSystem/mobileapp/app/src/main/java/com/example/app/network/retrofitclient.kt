@@ -1,4 +1,3 @@
-// app/src/main/java/com/example/storeit/network/RetrofitClient.kt
 package com.example.storeit.network
 
 import okhttp3.MultipartBody
