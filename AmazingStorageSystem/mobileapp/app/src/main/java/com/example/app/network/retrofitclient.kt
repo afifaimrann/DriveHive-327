@@ -10,7 +10,7 @@ import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.*
 
 object RetrofitClient {
-    private const val BASE_URL = "http://YOUR_SERVER_IP:3000/"
+    private const val BASE_URL = "http://server IP:PORT"
 
     private val logger = HttpLoggingInterceptor().apply {
         level = HttpLoggingInterceptor.Level.BODY
