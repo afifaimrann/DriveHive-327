@@ -11,6 +11,10 @@ const serviceAccount = require("/Users/shadman/Downloads/firebase_credentials.js
 const { createCloudStorage } = require("./cloudStorageFactory");
 const fs = require("fs");
 const path = require("path");
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
+const JWT_SECRET = 'SECRETBRO';
+
 
 const downloadsDir = path.join(__dirname, "downloads");
 fs.mkdirSync(downloadsDir, { recursive: true });
@@ -34,11 +38,28 @@ admin.initializeApp({
 const db = admin.firestore();
 
 // Telegram Bot Setup
-const token = "TELEGRAM_BOT_ACCESS_TOKEN"; // Replace with your BotFather token
+const token = "HIDDEN"; // Replace with your BotFather token
 const bot = new TelegramBot(token, { polling: false }); // Webhook, not polling
 
 // Middleware to parse JSON bodies (for webhook)
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+async function createAuthToken(chatId, type) {
+  const tokenDoc = db.collection('authTokens').doc();
+  const tokenId = tokenDoc.id;
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes expiry
+
+  await tokenDoc.set({
+    chatId: chatId.toString(),
+    type, // 'register' or 'login'
+    createdAt: new Date().toISOString(),
+    expiresAt: expiresAt.toISOString(),
+    used: false
+  });
+
+  return tokenId;
+}
 
 // Webhook endpoint for Telegram updates
 app.post("/telegram-webhook", (req, res) => {
@@ -47,7 +68,7 @@ app.post("/telegram-webhook", (req, res) => {
 });
 
 // Set webhook (run this once or on server start)
-const webhookUrl = "https://fd21-103-180-245-255.ngrok-free.app/telegram-webhook"; // Replace with ngrok or deployed URL
+const webhookUrl = "https://aea2-103-180-245-255.ngrok-free.app/telegram-webhook"; // Replace with ngrok or deployed URL
 bot.setWebHook(webhookUrl).then(() => {
   console.log(`Webhook set to ${webhookUrl}`);
 }).catch(err => {
@@ -55,24 +76,42 @@ bot.setWebHook(webhookUrl).then(() => {
 });
 
 bot.onText(/\/start/, async (msg) => {
-  const chatId = msg.chat.id;
-  const userId = msg.from.id.toString(); // Convert to string for Firestore compatibility
+  const chatId = msg.chat.id.toString();
 
-  // Reference to the user's document in the 'users' collection
-  const userRef = db.collection('users').doc(userId);
-  const userDoc = await userRef.get();
-
-  if (!userDoc.exists) {
-    // New user: register them
-    await userRef.set({
-      telegramId: userId,
-      createdAt: new Date().toISOString()
-    });
-    bot.sendMessage(chatId, "Welcome! You’ve been registered with our service.");
-  } else {
-    // Existing user
+  const usersSnapshot = await db.collection('users').where('telegramChatId', '==', chatId).get();
+  
+  if (!usersSnapshot.empty) {
     bot.sendMessage(chatId, "Welcome back!");
+  } else {
+    const registerToken = await createAuthToken(chatId, 'register');
+    const loginToken = await createAuthToken(chatId, 'login');
+    const registerUrl = `https://aea2-103-180-245-255.ngrok-free.app/register?token=${registerToken}`;
+    const loginUrl = `https://aea2-103-180-245-255.ngrok-free.app/login?token=${loginToken}`;
+
+    bot.sendMessage(chatId, "Welcome! To use this bot, please register or log in.", {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: "Register", url: registerUrl }],
+          [{ text: "Log in", url: loginUrl }]
+        ]
+      }
+    });
   }
+});
+
+
+bot.onText(/\/login/, async (msg) => {
+  const chatId = msg.chat.id.toString();
+  const token = await createAuthToken(chatId, 'login');
+  const loginUrl = `https://aea2-103-180-245-255.ngrok-free.app/login?token=${token}`;
+
+  bot.sendMessage(chatId, "Please log in to link your account.", {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: "Log in", url: loginUrl }]
+      ]
+    }
+  });
 });
 
 // Handle /upload command
@@ -82,10 +121,17 @@ bot.onText(/\/upload/, (msg) => {
 });
 
 bot.on("document", async (msg) => {
-  const chatId = msg.chat.id;
-  const userId = msg.from.id.toString(); // Get the user ID
+  const chatId = msg.chat.id.toString();
+
+  const usersSnapshot = await db.collection('users').where('telegramChatId', '==', chatId).get();
+  if (usersSnapshot.empty) {
+    bot.sendMessage(chatId, "You are not linked to an account. Use /start to register or log in.");
+    return;
+  }
+
+  const userId = usersSnapshot.docs[0].id;
   const fileId = msg.document.file_id;
-  const fileName = msg.document.file_name;
+  const fileName = msg.document.file_name || `file_${fileId}`;
   const fileSize = msg.document.file_size;
 
   let tempFilePath;
@@ -135,7 +181,6 @@ bot.on("document", async (msg) => {
       fileMetaData.chunks.push({ ...uploadResult, type: uploadResult.type });
     }
 
-    // Store in user's files subcollection instead of root 'files'
     const userRef = db.collection('users').doc(userId);
     await userRef.collection('files').add(fileMetaData);
 
@@ -149,29 +194,35 @@ bot.on("document", async (msg) => {
 });
 
 bot.onText(/\/download (.+)/, async (msg, match) => {
-  const chatId = msg.chat.id;
-  const userId = msg.from.id.toString();
+  const chatId = msg.chat.id.toString();
   const fileName = match[1];
 
+  const usersSnapshot = await db.collection('users').where('telegramChatId', '==', chatId).get();
+  if (usersSnapshot.empty) {
+    bot.sendMessage(chatId, "You are not linked to an account. Use /start to register or log in.");
+    return;
+  }
+
+  const userId = usersSnapshot.docs[0].id;
+  const userRef = db.collection('users').doc(userId);
+  const filesSnapshot = await userRef.collection('files').where("name", "==", fileName).get();
+
+  if (filesSnapshot.empty) {
+    bot.sendMessage(chatId, `File "${fileName}" not found in your files.`);
+    return;
+  }
+
+  const fileData = filesSnapshot.docs[0].data();
+  if (fileData.size > 50 * 1024 * 1024) {
+    bot.sendMessage(chatId, "File too large for Telegram (>50MB). Use the website/app for larger files.");
+    return;
+  }
+
+  const tempFileName = `${Date.now()}-${fileName}`;
+  const tempFilePath = path.join(downloadsDir, tempFileName);
+  const writeStream = fs.createWriteStream(tempFilePath);
+
   try {
-    const userRef = db.collection('users').doc(userId);
-    const filesSnapshot = await userRef.collection('files').where("name", "==", fileName).get();
-
-    if (filesSnapshot.empty) {
-      bot.sendMessage(chatId, `File "${fileName}" not found in your files.`);
-      return;
-    }
-
-    const fileData = filesSnapshot.docs[0].data();
-    if (fileData.size > 50 * 1024 * 1024) {
-      bot.sendMessage(chatId, "File too large for Telegram (>50MB). Use the website/app for larger files.");
-      return;
-    }
-
-    const tempFileName = `${Date.now()}-${fileName}`;
-    const tempFilePath = path.join(downloadsDir, tempFileName);
-    const writeStream = fs.createWriteStream(tempFilePath);
-
     writeStream.on('error', (err) => {
       console.error("Write stream error:", err);
       bot.sendMessage(chatId, "Error preparing download.");
@@ -207,22 +258,149 @@ bot.onText(/\/download (.+)/, async (msg, match) => {
 });
 
 bot.onText(/\/list/, async (msg) => {
-  const chatId = msg.chat.id;
-  const userId = msg.from.id.toString();
+  const chatId = msg.chat.id.toString();
 
-  try {
-    const userRef = db.collection('users').doc(userId);
-    const filesSnapshot = await userRef.collection('files').get();
-    const fileNames = filesSnapshot.docs.map(doc => doc.data().name);
+  const usersSnapshot = await db.collection('users').where('telegramChatId', '==', chatId).get();
+  if (usersSnapshot.empty) {
+    bot.sendMessage(chatId, "You are not linked to an account. Use /start to register or log in.");
+    return;
+  }
 
-    if (fileNames.length === 0) {
-      bot.sendMessage(chatId, "You haven’t uploaded any files yet.");
-    } else {
-      bot.sendMessage(chatId, "Your files:\n" + fileNames.join("\n"));
+  const userId = usersSnapshot.docs[0].id;
+  const userRef = db.collection('users').doc(userId);
+  const filesSnapshot = await userRef.collection('files').get();
+  const fileNames = filesSnapshot.docs.map(doc => doc.data().name);
+
+  if (fileNames.length === 0) {
+    bot.sendMessage(chatId, "You haven’t uploaded any files yet.");
+  } else {
+    bot.sendMessage(chatId, "Your files:\n" + fileNames.join("\n"));
+  }
+});
+
+function authenticateToken(req, res, next) {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1]; // Expecting "Bearer <token>"
+
+  if (!token) return res.status(401).send("Authentication required");
+
+  jwt.verify(token, JWT_SECRET, (err, user) => {
+    if (err) return res.status(403).send("Invalid or expired token");
+    req.userId = user.userId;
+    next();
+  });
+}
+
+app.get('/register', (req, res) => {
+  const token = req.query.token;
+  res.send(`
+    <form method="post" action="/register">
+      ${token ? `<input type="hidden" name="token" value="${token}">` : ''}
+      <input type="text" name="username" placeholder="Username" required>
+      <input type="password" name="password" placeholder="Password" required>
+      <button type="submit">Register</button>
+    </form>
+  `);
+});
+
+app.post('/register', async (req, res) => {
+  const { username, password, token } = req.body;
+
+  const usersSnapshot = await db.collection('users').where('username', '==', username).get();
+  if (!usersSnapshot.empty) {
+    return res.status(400).send("Username already taken");
+  }
+
+  const hashedPassword = await bcrypt.hash(password, 10);
+  const userDoc = db.collection('users').doc();
+  const userData = {
+    username,
+    password: hashedPassword,
+    createdAt: new Date().toISOString()
+  };
+
+  if (token) {
+    const tokenDoc = await db.collection('authTokens').doc(token).get();
+    if (tokenDoc.exists && tokenDoc.data().type === 'register' && !tokenDoc.data().used) {
+      userData.telegramChatId = tokenDoc.data().chatId;
+      await tokenDoc.ref.update({ used: true });
+      bot.sendMessage(tokenDoc.data().chatId, "Registration successful! You are now linked.");
     }
-  } catch (error) {
-    console.error("List error:", error);
-    bot.sendMessage(chatId, "Error retrieving your file list.");
+  }
+
+  await userDoc.set(userData);
+  const jwtToken = jwt.sign({ userId: userDoc.id }, JWT_SECRET, { expiresIn: '1h' });
+  res.send({ message: "Registered successfully", token: jwtToken });
+});
+
+app.get('/login', (req, res) => {
+  const token = req.query.token;
+  res.send(`
+    <form method="post" action="/login">
+      ${token ? `<input type="hidden" name="token" value="${token}">` : ''}
+      <input type="text" name="username" placeholder="Username" required>
+      <input type="password" name="password" placeholder="Password" required>
+      <button type="submit">Log in</button>
+    </form>
+  `);
+});
+
+app.post('/login', async (req, res) => {
+  const { username, password, token } = req.body;
+
+  const usersSnapshot = await db.collection('users').where('username', '==', username).get();
+  if (usersSnapshot.empty) {
+    return res.status(400).send("Invalid username or password");
+  }
+
+  const userDoc = usersSnapshot.docs[0];
+  const userData = userDoc.data();
+
+  const passwordMatch = await bcrypt.compare(password, userData.password);
+  if (!passwordMatch) {
+    return res.status(400).send("Invalid username or password");
+  }
+
+  if (token) {
+    const tokenDoc = await db.collection('authTokens').doc(token).get();
+    if (tokenDoc.exists && tokenDoc.data().type === 'login' && !tokenDoc.data().used) {
+      await userDoc.ref.update({ telegramChatId: tokenDoc.data().chatId });
+      await tokenDoc.ref.update({ used: true });
+      bot.sendMessage(tokenDoc.data().chatId, "Login successful! Your Telegram account is now linked.");
+    }
+  }
+
+  const jwtToken = jwt.sign({ userId: userDoc.id }, JWT_SECRET, { expiresIn: '1h' });
+  res.send({ message: "Logged in successfully", token: jwtToken });
+});
+
+
+app.post('/generate-link-code', authenticateToken, async (req, res) => {
+  const userId = req.userId;
+  const code = Math.random().toString(36).substring(2, 8); // 6-character code
+
+  await db.collection('users').doc(userId).update({ linkCode: code });
+  res.send({ message: `Send this code to the bot to link your account: ${code}` });
+});
+
+
+bot.on('message', async (msg) => {
+  const chatId = msg.chat.id.toString();
+  const text = msg.text;
+
+  if (!text) return; // Ignore non-text messages
+  if (text.startsWith('/')) return; // Ignore commands
+
+  const usersSnapshot = await db.collection('users').where('linkCode', '==', text).get();
+  if (!usersSnapshot.empty) {
+    const userDoc = usersSnapshot.docs[0];
+    await userDoc.ref.update({
+      telegramChatId: chatId,
+      linkCode: null
+    });
+    bot.sendMessage(chatId, "Your Telegram account has been linked successfully!");
+  } else {
+    bot.sendMessage(chatId, "Invalid code. Please try again.");
   }
 });
 
@@ -336,11 +514,12 @@ bucket APIs.
 Unchunked files are calling APIs directly through the classes here.
 */
 
-app.post("/upload", upload.single("file"), async (req, res) => {
+app.post("/upload", authenticateToken, upload.single("file"), async (req, res) => {
+  const userId = req.userId;
   const file = req.file;
   const fileName = file.originalname;
   const fileSize = file.size;
-  const CHUNK_LIMIT = 200 * 1024 * 1024; // 200MB threshold for non-chunked upload
+  const CHUNK_LIMIT = 200 * 1024 * 1024;
 
   try {
     const fileMetaData = {
@@ -353,45 +532,32 @@ app.post("/upload", upload.single("file"), async (req, res) => {
     };
 
     if (fileSize > CHUNK_LIMIT) {
-      console.log(`File size ${fileSize} > ${CHUNK_LIMIT}, uploading in chunks...`);
-      const uploader = new ChunkedFileUploads(file, cloudAccounts); // Server side file handling
-      fileMetaData.chunks = await uploader.sliceUpload(); // Files getting sliced, handled and then uploaded via API calls
+      const uploader = new ChunkedFileUploads(file, cloudAccounts);
+      fileMetaData.chunks = await uploader.sliceUpload();
     } else {
-      console.log(`Uploading unchunked file: ${fileName}`);
-      const storageInstances = cloudAccounts.map(account => createCloudStorage(account)); // Creating cloud storage instances to select one which can fit the file
+      const storageInstances = cloudAccounts.map(account => createCloudStorage(account));
       let selectedStorage = null;
       for (const storage of storageInstances) {
-        try {
-          const available = await storage.getAvailableStorage(); // Fetching available storage
-          if (fileSize <= available) {
-            selectedStorage = storage; // Account selected
-            break;
-          }
-        } catch (error) {
-          console.error(`Error checking storage for ${storage.id}:`, error);
+        const available = await storage.getAvailableStorage();
+        if (fileSize <= available) {
+          selectedStorage = storage;
+          break;
         }
       }
-      if (!selectedStorage) {
-        throw new Error("No available storage for the file");
-      }
+      if (!selectedStorage) throw new Error("No available storage");
       const uploadResult = await selectedStorage.uploadChunk({
         name: fileName,
         mimeType: file.mimetype,
-        range: { start: 0, end: file.size - 1 }
-      }, file.path); // File details to work with, this is the direct API call.
-      fileMetaData.chunks.push({
-        ...uploadResult,
-        type: uploadResult.type
-      }); // Pushing relevant metadata of the chunks to store for later in firestore
+        range: { start: 0, end: fileSize - 1 }
+      }, file.path);
+      fileMetaData.chunks.push({ ...uploadResult, type: uploadResult.type });
     }
 
-    await db.collection("files").add(fileMetaData); // Adding file metadata to firestore
-    fs.unlinkSync(file.path); // Deleting the file from the server
+    const userRef = db.collection('users').doc(userId);
+    await userRef.collection('files').add(fileMetaData);
+    fs.unlinkSync(file.path);
 
-    res.send({
-      message: "File uploaded successfully",
-      metadata: fileMetaData
-    });
+    res.send({ message: "File uploaded successfully", metadata: fileMetaData });
   } catch (error) {
     fs.unlinkSync(file.path);
     console.error("Upload error:", error);
@@ -399,91 +565,45 @@ app.post("/upload", upload.single("file"), async (req, res) => {
   }
 });
 
-app.get("/download", async (req, res) => {
-  const fileName = req.query.fileName; // Prompt the user to enter a file name
-  console.log(`Received download request for file: ${fileName}`);
+app.get("/download", authenticateToken, async (req, res) => {
+  const userId = req.userId;
+  const fileName = req.query.fileName;
 
-  if (!fileName) {
-    console.log("Error: fileName query parameter is missing");
-    return res.status(400).send("fileName query parameter is required");
-  }
+  if (!fileName) return res.status(400).send("fileName query parameter is required");
 
-  try {
-    console.log("Querying Firestore for file metadata...");
-    // Check if the file exists in firestore database
-    const snapshot = await db.collection("files")
-      .where("name", "==", fileName)
-      .get();
+  const userRef = db.collection('users').doc(userId);
+  const snapshot = await userRef.collection('files').where("name", "==", fileName).get();
 
-    if (snapshot.empty) {
-      console.log(`File "${fileName}" not found in Firestore.`);
-      return res.status(404).send("File not found");
+  if (snapshot.empty) return res.status(404).send("File not found");
+
+  const fileData = snapshot.docs[0].data();
+  res.setHeader("Content-Disposition", `attachment; filename="${fileData.name}"`);
+  res.setHeader("Content-Type", fileData.mimeType);
+  res.setHeader("Content-Length", fileData.size);
+
+  if (fileData.isChunked) {
+    const sortedChunks = fileData.chunks.sort((a, b) => a.offset - b.offset);
+    for (const chunk of sortedChunks) {
+      const HandlerClass = downloadHandlers[chunk.type];
+      const downloader = new HandlerClass(fileData, cloudAccounts);
+      await downloader.streamChunkToResponse(chunk, res);
     }
-
-    const fileDoc = snapshot.docs[0];
-    const fileData = fileDoc.data();
-    console.log(`File found: ${fileData.name}, Size: ${fileData.size} bytes, Chunks: ${fileData.chunks.length}`);
-
-    // Setting necessary headers for the file to be downloaded
-    res.setHeader("Content-Disposition", `attachment; filename="${fileData.name}"`);
-    res.setHeader("Content-Type", fileData.mimeType);
-    res.setHeader("Content-Length", fileData.size);
-
-    if (fileData.isChunked) {
-      console.log(`Downloading chunked file: ${fileData.name}`);
-      const sortedChunks = fileData.chunks.sort((a, b) => a.offset - b.offset);
-
-      // Sorting the chunks by their offset to determine which chunk comes first
-      // Downloading the chunks one by one
-      for (const chunk of sortedChunks) {
-        console.log(`Processing chunk at offset ${chunk.offset}, type: ${chunk.type}`);
-        const HandlerClass = downloadHandlers[chunk.type]; // A mapper to check what type of chunk is it
-        if (!HandlerClass) {
-          console.error(`Unsupported chunk type: ${chunk.type}`);
-          return res.status(500).send(`Unsupported chunk type: ${chunk.type}`);
-        }
-        const downloader = new HandlerClass(fileData, cloudAccounts); // Calling the checked type of the bucket
-        await downloader.streamChunkToResponse(chunk, res); // Downloading the chunk via server handling of files
-      }
-      console.log(`Completed downloading all chunks for file: ${fileData.name}`);
-      res.end();
-    } else {
-      console.log(`Downloading unchunked file: ${fileData.name}`);
-      const singleChunk = fileData.chunks[0];
-      const HandlerClass = unchunkedDownloadHandlers[singleChunk.type]; //Use the unchunked handler mapping
-      if (!HandlerClass) {
-        console.error(`Unsupported file type: ${singleChunk.type}`);
-        return res.status(500).send(`Unsupported file type: ${singleChunk.type}`);
-      }
-      const unchunkedDownloader = new HandlerClass(fileData, cloudAccounts);
-      await unchunkedDownloader.downloadFile(res); // Direct API call
-    }
-  } catch (error) {
-    console.error("Unexpected download error:", error);
-    if (!res.headersSent) {
-      res.status(500).send("Internal server error");
-    } else {
-      res.destroy(error);
-    }
+    res.end();
+  } else {
+    const singleChunk = fileData.chunks[0];
+    const HandlerClass = unchunkedDownloadHandlers[singleChunk.type];
+    const unchunkedDownloader = new HandlerClass(fileData, cloudAccounts);
+    await unchunkedDownloader.downloadFile(res);
   }
 });
 
 // This endpoint basically does the retrieval of the file names from our firestore database.
-app.get("/files", async (req, res) => {
-  try {
-    const snapshot = await db.collection("files").get();
-    const fileNames = [];
-    snapshot.forEach(doc => {
-      const data = doc.data();
-      if (data && data.name) {
-        fileNames.push(data.name);
-      }
-    });
-    res.status(200).json({ files: fileNames });
-  } catch (error) {
-    console.error("Error retrieving files:", error);
-    res.status(500).send("Error retrieving files");
-  }
+app.get("/files", authenticateToken, async (req, res) => {
+  const userId = req.userId;
+  const userRef = db.collection('users').doc(userId);
+  const snapshot = await userRef.collection('files').get();
+  const fileNames = snapshot.docs.map(doc => doc.data().name);
+  res.status(200).json({ files: fileNames });
 });
 
 app.listen(3000, () => {
