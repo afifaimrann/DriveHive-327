@@ -1,0 +1,15 @@
+<resources>
+    <string name="app_name">StoreIt</string>
+    <string name="logo">StoreIt Logo</string>
+    <string name="menu">Menu</string>
+    <string name="search_hint">Search files...</string>
+    <string name="google_accounts">Google Accounts</string>
+    <string name="dropbox_accounts">Dropbox Accounts</string>
+    <string name="chatbot">Chatbot</string>
+    <string name="logout">Logout</string>
+    <string name="avatar">User Avatar</string>
+    <string name="enter_filename">Enter filename</string>
+    <string name="download">Download</string>
+    <string name="navigation_drawer_open">Open navigation drawer</string>
+    <string name="navigation_drawer_close">Close navigation drawer</string>
+</resources>

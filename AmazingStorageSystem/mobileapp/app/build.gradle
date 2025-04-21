@@ -1,0 +1,7 @@
+implementation 'com.google.android.gms:play-services-auth:20.5.0'
+implementation "androidx.compose.material3:material3-window-size-class:1.2.1"
+implementation("io.coil-kt:coil-compose:2.0.0")
+testImplementation 'org.mockito:mockito-core:4.11.0'
+implementation 'com.google.firebase:firebase-auth-ktx:22.3.1'
+implementation 'com.google.android.gms:play-services-auth:21.0.0'
+implementation 'com.dropbox.core:dropbox-core-sdk:5.4.6'
