@@ -1,0 +1,167 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <!-- Sidebar -->
+    <LinearLayout
+        android:id="@+id/sidebar"
+        android:layout_width="wrap_content"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <ImageButton
+            android:id="@+id/btn_google"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:src="@drawable/google"
+            android:contentDescription="@string/google_accounts"
+            android:background="@android:color/transparent" />
+
+        <ImageButton
+            android:id="@+id/btn_dropbox"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:src="@drawable/dropbox"
+            android:contentDescription="@string/dropbox_accounts"
+            android:background="@android:color/transparent" />
+
+        <ImageButton
+            android:id="@+id/btn_chatbot"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:src="@drawable/chatbot"
+            android:contentDescription="Chatbot"
+            android:background="@android:color/transparent" />
+
+        <ImageButton
+            android:id="@+id/btn_logout"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:src="@drawable/logout"
+            android:contentDescription="Log Out"
+            android:background="@android:color/transparent" />
+
+        <!-- Space for future icons -->
+        <!-- <ImageButton android:id="@+id/btn_future1" android:layout_width="48dp" android:layout_height="48dp" android:src="@drawable/menu" android:contentDescription="Future Option 1" /> -->
+        <!-- <ImageButton android:id="@+id/btn_future2" android:layout_width="48dp" android:layout_height="48dp" android:src="@drawable/avatar" android:contentDescription="Future Option 2" /> -->
+    </LinearLayout>
+
+    <!-- Main Content -->
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/main_content"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        app:layout_constraintStart_toEndOf="@id/sidebar"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <!-- Header -->
+        <LinearLayout
+            android:id="@+id/header"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:padding="8dp"
+            app:layout_constraintTop_toTopOf="parent">
+
+            <ImageView
+                android:id="@+id/logo"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:src="@drawable/logo" />
+
+            <TextView
+                android:id="@+id/app_name"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Storelt"
+                android:textSize="24sp"
+                android:textStyle="bold"
+                android:layout_marginStart="8dp" />
+        </LinearLayout>
+
+        <!-- Search Bar -->
+        <LinearLayout
+            android:id="@+id/search_bar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:padding="8dp"
+            android:background="#E0E0E0"
+            app:layout_constraintTop_toBottomOf="@id/header">
+
+            <ImageView
+                android:id="@+id/search_icon"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:src="@drawable/search" />
+
+            <EditText
+                android:id="@+id/search_input"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:hint="@string/search_files"
+                android:background="@null" />
+
+            <Button
+                android:id="@+id/search_button"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Go" />
+        </LinearLayout>
+
+        <!-- File List -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/file_list"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            app:layout_constraintTop_toBottomOf="@id/search_bar"
+            app:layout_constraintBottom_toTopOf="@id/download_bar" />
+
+        <!-- Download Bar -->
+        <LinearLayout
+            android:id="@+id/download_bar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:padding="8dp"
+            android:background="#E0E0E0"
+            app:layout_constraintBottom_toBottomOf="parent">
+
+            <EditText
+                android:id="@+id/download_input"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:hint="@string/enter_file_name_to_download"
+                android:background="@null" />
+
+            <ImageButton
+                android:id="@+id/download_button"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:src="@drawable/download"
+                android:contentDescription="@string/download"
+                android:background="@android:color/transparent" />
+        </LinearLayout>
+
+        <!-- Upload Button -->
+        <com.google.android.material.floatingactionbutton.FloatingActionButton
+            android:id="@+id/upload_fab"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:src="@drawable/upload"
+            android:backgroundTint="#FF0000"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            android:layout_margin="16dp"
+            android:contentDescription="@string/upload" />
+    </androidx.constraintlayout.widget.ConstraintLayout>
+</androidx.constraintlayout.widget.ConstraintLayout>
+

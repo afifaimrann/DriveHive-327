@@ -1,0 +1,22 @@
+<resources>
+    <string name="app_name">FileStore</string>
+    <string name="login">Login</string>
+    <string name="username">Username</string>
+    <string name="password">Password</string>
+    <string name="register">Register</string>
+    <string name="already_have_an_account_login">Already have an account? Login.</string>
+    <string name="signup">Signup</string>
+    <string name="confirm_your_password">Confirm your password</string>
+    <string name="create_a_password">Create a password</string>
+    <string name="enter_your_email">Enter your email</string>
+    <string name="upload">Upload</string>
+    <string name="download">Download</string>
+    <string name="enter_file_name_to_download">Enter file name to download</string>
+    <string name="search_files">Search files</string>
+    <string name="dropbox_accounts">Dropbox Accounts</string>
+    <string name="google_accounts">Google Accounts</string>
+    <string name="sync_your_telegram">SYNC YOUR TELEGRAM</string>
+    <string name="telegram_id">TELEGRAM ID</string>
+    <string name="google_server_client_id">your-web-client-id.apps.googleusercontent.com</string>
+
+</resources>
