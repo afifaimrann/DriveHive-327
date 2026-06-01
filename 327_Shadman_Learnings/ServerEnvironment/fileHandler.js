@@ -49,16 +49,17 @@ class ChunkedFileUploads extends FileHandler {
         name: `${this.file.originalname}-chunk-${offset}-${offset + currentChunkSize - 1}`,
         mimeType: this.file.mimetype,
         range: { start: offset, end: offset + currentChunkSize - 1 }
-      }; // Setting the information to download the specific chunk, sent over to API
+      };
       try {
-        const uploadResult = await storage.uploadChunk(chunkInfo, this.file.path); // Calling the upload API for the respective type of account
+        const uploadResult = await storage.uploadChunk(chunkInfo, this.file.path);
         chunkUploads.push({
           ...uploadResult,
           chunkSize: currentChunkSize,
           offset: offset,
-          type: uploadResult.type
-        }); // Pushing the metadata of the chunk to store for later in firestore
-        offset += currentChunkSize; // Updating the pointer to the next chunk
+          type: uploadResult.type,
+          driveId: storage.id // Ensure driveId is included
+        });
+        offset += currentChunkSize;
       } catch (error) {
         console.error(`Error uploading chunk at offset ${offset} to ${storage.id}:`, error);
         throw error;
