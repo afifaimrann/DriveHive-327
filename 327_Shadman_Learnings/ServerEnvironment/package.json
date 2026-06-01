@@ -1,33 +1,33 @@
 {
-  "name": "serverenvironment",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "name": "drivehive",
+  "version": "2.0.0",
+  "description": "Unified cloud storage aggregator — combine Google Drive, Dropbox, and more into one seamless pool.",
+  "type": "module",
+  "main": "src/app.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "nodemon index.js"
+    "start": "node src/app.js",
+    "dev": "nodemon src/app.js",
+    "test": "echo \"No tests yet\" && exit 0"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": ["cloud-storage", "google-drive", "dropbox", "aggregator"],
+  "author": "Shadman Shahriar",
   "license": "ISC",
   "dependencies": {
+    "@supabase/supabase-js": "^2.49.0",
     "bcrypt": "^5.1.1",
-    "compromise": "^14.14.4",
-    "csv-parser": "^3.2.0",
+    "cors": "^2.8.5",
     "dotenv": "^16.5.0",
     "dropbox": "^10.34.0",
     "express": "^4.21.2",
-    "firebase": "^11.2.0",
-    "firebase-admin": "^13.0.2",
+    "express-rate-limit": "^7.5.0",
+    "googleapis": "^144.0.0",
+    "helmet": "^8.1.0",
+    "joi": "^17.13.0",
     "jsonwebtoken": "^9.0.2",
-    "mammoth": "^1.9.0",
     "multer": "^1.4.5-lts.1",
-    "natural": "^8.0.1",
-    "node-fetch": "^2.7.0",
-    "node-telegram-bot-api": "^0.66.0",
-    "openai": "^4.94.0",
-    "pdf-parse": "^1.1.1",
-    "textract": "^2.5.0"
+    "node-fetch": "^3.3.2",
+    "pino": "^9.6.0",
+    "pino-pretty": "^13.0.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.9"
