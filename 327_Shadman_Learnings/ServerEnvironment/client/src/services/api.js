@@ -215,6 +215,14 @@ class ApiClient {
 
     return new Blob(chunks);
   }
+
+  generateTelegramCode() {
+    return this.post('/auth/telegram/link-code');
+  }
+
+  unlinkTelegram() {
+    return this.delete('/auth/telegram/unlink');
+  }
 }
 
 export const api = new ApiClient();

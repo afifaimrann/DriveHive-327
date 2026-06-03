@@ -8,6 +8,7 @@ import env from './config/env.js'; // Loading env validates variables immediatel
 import logger from './utils/logger.js';
 import limiter from './middleware/rate-limit.js';
 import errorHandler from './middleware/error.middleware.js';
+import { startBot } from './services/telegram.service.js';
 
 // Route Imports
 import authRoutes from './routes/auth.routes.js';
@@ -72,6 +73,9 @@ app.use(errorHandler);
 const PORT = env.port;
 const server = app.listen(PORT, () => {
   logger.info(`Server running in ${env.nodeEnv} mode on port ${PORT}`);
+  if (env.telegram.token) {
+    startBot();
+  }
 });
 
 export default app;

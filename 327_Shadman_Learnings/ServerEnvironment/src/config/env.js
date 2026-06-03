@@ -58,6 +58,14 @@ const env = {
     clientId: process.env.DROPBOX_CLIENT_ID,
     clientSecret: process.env.DROPBOX_CLIENT_SECRET,
   },
+
+  telegram: {
+    token: process.env.TELEGRAM_BOT_TOKEN,
+  },
 };
+
+if (!process.env.TELEGRAM_BOT_TOKEN) {
+  console.warn('⚠️  Warning: TELEGRAM_BOT_TOKEN is not set. Telegram bot integration will be disabled.');
+}
 
 export default env;

@@ -211,10 +211,12 @@ export async function downloadFile(userId, fileId, res) {
     throw new NotFoundError('File chunks not found');
   }
 
-  // Set response headers for download
-  res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileRecord.name)}"`);
-  res.setHeader('Content-Type', fileRecord.mime_type || 'application/octet-stream');
-  res.setHeader('Content-Length', fileRecord.size);
+  // Set response headers for download if this is an Express HTTP response
+  if (typeof res.setHeader === 'function') {
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileRecord.name)}"`);
+    res.setHeader('Content-Type', fileRecord.mime_type || 'application/octet-stream');
+    res.setHeader('Content-Length', fileRecord.size);
+  }
 
   // 3. Download and stream chunks sequentially
   try {
@@ -254,10 +256,17 @@ export async function downloadFile(userId, fileId, res) {
     res.end();
   } catch (err) {
     logger.error({ fileId, error: err }, 'Error downloading file chunks');
-    if (res.headersSent) {
-      // Headers already sent, we must destroy the connection to notify the client of a failure
-      res.destroy(err);
+    if (typeof res.setHeader === 'function') {
+      if (res.headersSent) {
+        // Headers already sent, we must destroy the connection to notify the client of a failure
+        res.destroy(err);
+      } else {
+        throw err;
+      }
     } else {
+      if (typeof res.destroy === 'function') {
+        res.destroy(err);
+      }
       throw err;
     }
   }

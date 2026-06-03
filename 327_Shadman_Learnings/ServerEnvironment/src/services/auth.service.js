@@ -106,7 +106,7 @@ export function verifyToken(token) {
 export async function getUserById(userId) {
   const { data: user, error } = await supabase
     .from('profiles')
-    .select('id, username, email, created_at, updated_at')
+    .select('id, username, email, telegram_chat_id, created_at, updated_at')
     .eq('id', userId)
     .single();
 

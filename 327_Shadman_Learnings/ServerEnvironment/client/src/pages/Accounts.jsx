@@ -13,11 +13,19 @@ export function Accounts() {
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState(null); // 'google' or 'dropbox' or null
   const [toast, setToast] = useState(null);
+  
+  const [telegramChatId, setTelegramChatId] = useState(null);
+  const [linkCode, setLinkCode] = useState(null);
+  const [codeExpiresAt, setCodeExpiresAt] = useState(null);
+  const [timeLeft, setTimeLeft] = useState(0);
 
   const fetchAccounts = async () => {
     try {
       const data = await api.get('/oauth/accounts');
       setAccounts(data.accounts || []);
+      
+      const meData = await api.get('/auth/me');
+      setTelegramChatId(meData.user?.telegram_chat_id || null);
     } catch (err) {
       setToast({ message: err.message || 'Failed to load connected accounts', type: 'error' });
     } finally {
@@ -28,6 +36,71 @@ export function Accounts() {
   useEffect(() => {
     fetchAccounts();
   }, []);
+
+  // Handle countdown timer for Telegram link code
+  useEffect(() => {
+    if (!codeExpiresAt) return;
+    
+    // Set initial time
+    const initialTime = Math.max(0, Math.floor((new Date(codeExpiresAt) - new Date()) / 1000));
+    setTimeLeft(initialTime);
+
+    const interval = setInterval(() => {
+      const remaining = Math.max(0, Math.floor((new Date(codeExpiresAt) - new Date()) / 1000));
+      setTimeLeft(remaining);
+      if (remaining === 0) {
+        setLinkCode(null);
+        setCodeExpiresAt(null);
+        clearInterval(interval);
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [codeExpiresAt]);
+
+  // Poll for Telegram link verification status
+  useEffect(() => {
+    if (!linkCode || telegramChatId) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const meData = await api.get('/auth/me');
+        if (meData.user?.telegram_chat_id) {
+          setTelegramChatId(meData.user.telegram_chat_id);
+          setLinkCode(null);
+          setCodeExpiresAt(null);
+          setToast({ message: 'Telegram Bot linked successfully!', type: 'success' });
+        }
+      } catch (err) {
+        console.error('Failed to poll Telegram link status', err);
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [linkCode, telegramChatId]);
+
+  const handleGenerateTelegramCode = async () => {
+    try {
+      const data = await api.generateTelegramCode();
+      setLinkCode(data.code);
+      setCodeExpiresAt(data.expiresAt);
+      setToast({ message: 'Temporary link code generated!', type: 'success' });
+    } catch (err) {
+      setToast({ message: err.message || 'Failed to generate link code', type: 'error' });
+    }
+  };
+
+  const handleUnlinkTelegram = async () => {
+    if (!window.confirm('Are you sure you want to unlink your Telegram account? You will no longer be able to use Telegram to upload/download files.')) {
+      return;
+    }
+    try {
+      await api.unlinkTelegram();
+      setTelegramChatId(null);
+      setToast({ message: 'Telegram Bot unlinked successfully!', type: 'success' });
+    } catch (err) {
+      setToast({ message: err.message || 'Failed to unlink Telegram Bot', type: 'error' });
+    }
+  };
 
   const handleConnect = async (provider) => {
     setConnecting(provider);
@@ -157,6 +230,115 @@ export function Accounts() {
               <Plus size={18} />
               {connecting === 'dropbox' ? 'Connecting...' : 'Connect Dropbox'}
             </button>
+          </div>
+
+          {/* Telegram Connect */}
+          <div className="card glass" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '20px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+              <div style={{
+                width: '48px',
+                height: '48px',
+                borderRadius: '50%',
+                backgroundColor: 'rgba(0, 136, 204, 0.1)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}>
+                <span style={{ fontSize: '1.25rem', color: '#0088cc', fontWeight: 'bold' }}>T</span>
+              </div>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <h3 style={{ fontSize: '1.1rem', margin: 0, fontFamily: 'Outfit' }}>Telegram Bot</h3>
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {telegramChatId ? 'Integration active' : 'Link a bot as thin client'}
+                </p>
+              </div>
+            </div>
+
+            {telegramChatId ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  color: '#10b981',
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                  backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                  padding: '8px 12px',
+                  borderRadius: '8px',
+                  border: '1px solid rgba(16, 185, 129, 0.2)'
+                }}>
+                  <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#10b981' }}></span>
+                  Chat ID: {telegramChatId}
+                </div>
+                <button
+                  onClick={handleUnlinkTelegram}
+                  className="btn btn-secondary"
+                  style={{
+                    border: '1px solid rgba(239, 68, 68, 0.25)',
+                    backgroundColor: 'rgba(239, 68, 68, 0.05)',
+                    color: 'var(--color-danger)'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.15)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.05)';
+                  }}
+                >
+                  Unlink Bot
+                </button>
+              </div>
+            ) : linkCode ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px',
+                  background: 'rgba(15, 23, 42, 0.6)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '8px',
+                  padding: '12px'
+                }}>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: 0 }}>
+                    Send this code to the Telegram bot:
+                  </p>
+                  <p style={{
+                    fontSize: '1.4rem',
+                    fontWeight: 'bold',
+                    letterSpacing: '3px',
+                    color: 'var(--text-primary)',
+                    margin: '4px 0',
+                    fontFamily: 'monospace'
+                  }}>
+                    {linkCode}
+                  </p>
+                  <p style={{ fontSize: '0.75rem', color: '#f59e0b', margin: 0, fontWeight: 500 }}>
+                    Expires in {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')}
+                  </p>
+                </div>
+                <button
+                  onClick={() => { setLinkCode(null); setCodeExpiresAt(null); }}
+                  className="btn btn-secondary"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={handleGenerateTelegramCode}
+                className="btn btn-primary"
+                style={{
+                  background: 'linear-gradient(135deg, #0088cc 0%, #00a2ed 100%)',
+                  boxShadow: '0 4px 10px rgba(0, 136, 204, 0.2)'
+                }}
+              >
+                <Plus size={18} />
+                Link Telegram Bot
+              </button>
+            )}
           </div>
         </div>
 
