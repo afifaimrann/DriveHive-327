@@ -4,7 +4,7 @@ import path from 'path';
 import supabase from '../config/supabase.js';
 import env from '../config/env.js';
 import logger from '../utils/logger.js';
-import { uploadFile, downloadFile } from './storage.service.js';
+import { uploadFile, downloadFile, deleteFile } from './storage.service.js';
 
 let bot = null;
 
@@ -106,6 +106,7 @@ export function startBot() {
           `You can use the following commands:\n` +
           `📁 /list - List your uploaded files\n` +
           `📥 /download &lt;file_id&gt; - Download a specific file\n` +
+          `🗑️ /delete &lt;file_id&gt; - Delete a specific file\n` +
           `⚙️ /addstorage - Information on connecting storage nodes\n` +
           `🔌 /unlink - Unlink this bot from your DriveHive account\n\n` +
           `📎 <b>Hint</b>: You can also upload any document (up to 20MB) directly by dragging it here.`,
@@ -189,13 +190,14 @@ export function startBot() {
         const sizeStr = formatBytes(file.size);
         if (file.size > 50 * 1024 * 1024) {
           responseText += `${index + 1}. <b>${escapeHtml(file.name)}</b>\n` +
-                          `└ size: <code>${sizeStr}</code> | ⚠️ <i>&gt;50MB (Not downloadable via Telegram)</i>\n\n`;
+                          `└ size: <code>${sizeStr}</code> | ID: <code>${file.id}</code> | ⚠️ <i>(Not downloadable via Telegram)</i>\n\n`;
         } else {
           responseText += `${index + 1}. <b>${escapeHtml(file.name)}</b>\n` +
                           `└ size: <code>${sizeStr}</code> | ID: <code>${file.id}</code>\n\n`;
         }
       });
-      responseText += `📥 To download a file, send:\n/download <code>file_id</code>`;
+      responseText += `📥 To download a file: /download <code>file_id</code>\n` +
+                      `🗑️ To delete a file: /delete <code>file_id</code>`;
 
       bot.sendMessage(chatId, responseText, { parse_mode: 'HTML' });
     } catch (err) {
@@ -262,6 +264,48 @@ export function startBot() {
     } catch (err) {
       logger.error({ error: err, chatId, fileId }, 'Error in /download command');
       bot.sendMessage(chatId, '❌ Failed to download file from cloud nodes.');
+    }
+  });
+
+  // /delete command
+  bot.onText(/\/delete(?:\s+(.+))?/, async (msg, match) => {
+    const chatId = msg.chat.id.toString();
+    const fileId = match[1]?.trim();
+
+    if (!fileId) {
+      bot.sendMessage(chatId, '⚠️ Please specify a file ID. Example: /delete <code>FILE_UUID</code>', { parse_mode: 'HTML' });
+      return;
+    }
+
+    try {
+      const profile = await getProfileByChatId(chatId);
+      if (!profile) {
+        bot.sendMessage(chatId, '❌ Please link your account first.');
+        return;
+      }
+
+      // First check if file exists and get its name
+      const { data: fileRecord, error } = await supabase
+        .from('files')
+        .select('name')
+        .eq('id', fileId)
+        .eq('user_id', profile.id)
+        .single();
+
+      if (error || !fileRecord) {
+        bot.sendMessage(chatId, '❌ File not found or access denied.');
+        return;
+      }
+
+      bot.sendMessage(chatId, `⏳ Deleting <b>${escapeHtml(fileRecord.name)}</b> from cloud storage nodes...`, { parse_mode: 'HTML' });
+
+      // Execute deleteFile
+      await deleteFile(profile.id, fileId);
+
+      bot.sendMessage(chatId, `✅ <b>${escapeHtml(fileRecord.name)}</b> has been successfully deleted from your unified cloud pool.`, { parse_mode: 'HTML' });
+    } catch (err) {
+      logger.error({ error: err, chatId, fileId }, 'Error in /delete command');
+      bot.sendMessage(chatId, '❌ Failed to delete file.');
     }
   });
 
