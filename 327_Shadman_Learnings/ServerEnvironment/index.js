@@ -625,7 +625,7 @@ bot.onText(/\/addstorage (\w+)/, async (msg, match) => {
     );
     authUrl = auth.generateAuthUrl({
       access_type: 'offline',
-      scope: ['https://www.googleapis.com/auth/drive'],
+      scope: ['https://www.googleapis.com/auth/drive.file'],
       state: stateToken
     });
   } else if (provider === 'dropbox') {

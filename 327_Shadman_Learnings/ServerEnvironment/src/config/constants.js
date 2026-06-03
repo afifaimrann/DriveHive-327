@@ -14,7 +14,7 @@ export const PROVIDERS = {
 /** OAuth scopes per provider */
 export const OAUTH_SCOPES = {
   google: [
-    'https://www.googleapis.com/auth/drive',
+    'https://www.googleapis.com/auth/drive.file',
     'https://www.googleapis.com/auth/userinfo.email',
     'https://www.googleapis.com/auth/userinfo.profile'
   ],
