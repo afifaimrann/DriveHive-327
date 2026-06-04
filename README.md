@@ -19,22 +19,9 @@
 
 ---
 
-## 💼 Business Synopsis & Value Proposition
-
-In the modern enterprise and consumer landscape, data storage is highly fragmented, costly, and static. High-value document assets are scattered across isolated cloud accounts (Google Drive, Dropbox, etc.), forcing users to manage multiple credentials, interfaces, and recurring subscription fees. Crucially, these archives remain passive—storing data without extracting any semantic value or actionability.
-
-**DriveHive transforms passive, fragmented storage silos into a unified, intelligent data engine.**
-
-* **The Problem (Storage Cap Constraints & Data Silos):** Managing storage caps requires manual partitioning of files, file migration overhead, and paying multiple cloud providers, all while documents sit unused in passive archives.
-* **The Solution (Virtual Pooling & Automatic Orchestration):** DriveHive abstracts heterogeneous cloud storage accounts into a single, high-capacity virtual pool. Using dynamic space-allocation algorithms, it splits large files and distributes chunks transparently, eliminating storage caps and subscription overhead.
-* **The Value Realization (Retrieval-Augmented Generation):** By overlaying an in-process RAG pipeline onto the storage layers, DriveHive transitions documents from *cold archives* to *active knowledge bases*. Users can query their entire file catalog in natural language, receiving contextual, cited summaries from their PDFs, DOCX, and TXT files via the dashboard or a low-friction Telegram bot.
-* **The Achievement (Data Security & Cost-Optimization):** Built on a private, self-hosted containerized infrastructure, DriveHive secures credentials with AES-256 encryption at rest, uses local open-source embedding models for complete privacy, and delivers a modern, zero-SaaS-cost operational framework for files and document-centric AI.
-
----
-
 ## 📌 About This Repository
 
-> **Note:** This project lives inside `327_Shadman_Learnings/ServerEnvironment/`. The repository was originally structured as part of coursework for **CSCI 327 — Software Engineering**. What began as a learning exercise was progressively upscaled into a production-grade, full-stack cloud storage platform with AI capabilities. The surrounding repository structure reflects this academic origin.
+> **Note:** This project lives inside `327_Shadman_Learnings/ServerEnvironment/`. The repository was originally structured as part of coursework for **CSE 327 — Software Engineering**. What began as a learning exercise was progressively upscaled into a production-grade, full-stack cloud storage platform with AI capabilities. The surrounding repository structure reflects this academic origin.
 
 ---
 
@@ -455,4 +442,4 @@ This project is licensed under the **ISC License**.
 
 **Shadman Shahriar**
 
-Built as part of CSCI 327 — Software Engineering at Concordia University, and later evolved into a full-stack production-grade application.
+Built as part of CSE 327 — Software Engineering at North South University, and later evolved into a full-stack production-grade application.
