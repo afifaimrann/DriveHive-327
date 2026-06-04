@@ -21,7 +21,7 @@
 
 ## 📌 About This Repository
 
-> **Note:** This project lives inside `327_Shadman_Learnings/ServerEnvironment/`. The repository was originally structured as part of coursework for **CSCI 327 — Software Engineering**. What began as a learning exercise was progressively upscaled into a production-grade, full-stack cloud storage platform with AI capabilities. The surrounding repository structure reflects this academic origin.
+> **Note:** This project lives inside `327_Shadman_Learnings/ServerEnvironment/`. The repository was originally structured as part of coursework for **CSE 327 — Software Engineering**. What began as a learning exercise was progressively upscaled into a production-grade, full-stack cloud storage platform with AI capabilities. The surrounding repository structure reflects this academic origin.
 
 ---
 
