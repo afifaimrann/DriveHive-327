@@ -19,9 +19,22 @@
 
 ---
 
+## 💼 Business Synopsis & Value Proposition
+
+In the modern enterprise and consumer landscape, data storage is highly fragmented, costly, and static. High-value document assets are scattered across isolated cloud accounts (Google Drive, Dropbox, etc.), forcing users to manage multiple credentials, interfaces, and recurring subscription fees. Crucially, these archives remain passive—storing data without extracting any semantic value or actionability.
+
+**DriveHive transforms passive, fragmented storage silos into a unified, intelligent data engine.**
+
+* **The Problem (Storage Cap Constraints & Data Silos):** Managing storage caps requires manual partitioning of files, file migration overhead, and paying multiple cloud providers, all while documents sit unused in passive archives.
+* **The Solution (Virtual Pooling & Automatic Orchestration):** DriveHive abstracts heterogeneous cloud storage accounts into a single, high-capacity virtual pool. Using dynamic space-allocation algorithms, it splits large files and distributes chunks transparently, eliminating storage caps and subscription overhead.
+* **The Value Realization (Retrieval-Augmented Generation):** By overlaying an in-process RAG pipeline onto the storage layers, DriveHive transitions documents from *cold archives* to *active knowledge bases*. Users can query their entire file catalog in natural language, receiving contextual, cited summaries from their PDFs, DOCX, and TXT files via the dashboard or a low-friction Telegram bot.
+* **The Achievement (Data Security & Cost-Optimization):** Built on a private, self-hosted containerized infrastructure, DriveHive secures credentials with AES-256 encryption at rest, uses local open-source embedding models for complete privacy, and delivers a modern, zero-SaaS-cost operational framework for files and document-centric AI.
+
+---
+
 ## 📌 About This Repository
 
-> **Note:** This project lives inside `327_Shadman_Learnings/ServerEnvironment/`. The repository was originally structured as part of coursework for **CSE 327 — Software Engineering**. What began as a learning exercise was progressively upscaled into a production-grade, full-stack cloud storage platform with AI capabilities. The surrounding repository structure reflects this academic origin.
+> **Note:** This project lives inside `327_Shadman_Learnings/ServerEnvironment/`. The repository was originally structured as part of coursework for **CSCI 327 — Software Engineering**. What began as a learning exercise was progressively upscaled into a production-grade, full-stack cloud storage platform with AI capabilities. The surrounding repository structure reflects this academic origin.
 
 ---
 
@@ -174,16 +187,59 @@ npm run dev
 
 The server starts on `http://localhost:3000`. The React client (during development) runs separately on Vite's dev server — or serve the production build from the `client/dist` directory.
 
-### 5. Configure OAuth Callback URLs
+### 5. Expose Local Server & Configure OAuth Callback URLs
 
-In your Google Cloud Console and Dropbox App Console, add these redirect URIs:
+Since Google and Dropbox OAuth flows require public HTTPS callback endpoints during verification, you must expose your local development server through a secure tunnel.
 
+#### A. Start an HTTP Tunnel using ngrok
+Run the following command in a new terminal window to map your local Express server (default port `3000`) to a public HTTPS URL:
+
+```bash
+ngrok http 3000
 ```
-https://your-app-url.ngrok-free.app/api/oauth/callback/google
-https://your-app-url.ngrok-free.app/api/oauth/callback/dropbox
+
+This will output a dynamic forwarding address under the **Forwarding** row (e.g., `https://a1b2-34-56-78-90.ngrok-free.app`). Copy this link; this will be your `APP_URL`.
+
+#### B. Update Environment Variables
+In your `.env` file, update the callback URL variable:
+```env
+APP_URL=https://a1b2-34-56-78-90.ngrok-free.app
 ```
 
-Replace with your actual `APP_URL`.
+#### C. Configure Dropbox Developer Console
+1. Log in to the [Dropbox App Console](https://www.dropbox.com/developers/apps).
+2. Select your app and navigate to the **Settings** tab.
+3. Locate **Redirect URIs** under the OAuth 2.0 section.
+4. Add the following redirect URI:
+   ```
+   https://a1b2-34-56-78-90.ngrok-free.app/api/oauth/callback/dropbox
+   ```
+
+#### D. Configure Google Cloud Console
+1. Log in to the [Google Cloud Console](https://console.cloud.google.com/).
+2. Select your project and navigate to **APIs & Services** > **Credentials**.
+3. Under **OAuth 2.0 Client IDs**, edit your client credential details.
+4. Under **Authorized redirect URIs**, add the following callback URL:
+   ```
+   https://a1b2-34-56-78-90.ngrok-free.app/api/oauth/callback/google
+   ```
+
+---
+
+### 6. Google OAuth Verification & Test User Access
+
+Because Google enforces rigorous verification policies and formal security compliance procedures for OAuth scopes, this application is currently configured in **Testing Mode**. 
+
+The author intends to verify and deploy the application officially in the future. In the meantime, to connect a Google account successfully as a storage bucket:
+
+1. **Add Test Users**:
+   - In the Google Cloud Console, navigate to **APIs & Services** > **OAuth consent screen**.
+   - Under the **Test users** section, click **Add Users**.
+   - Input the Gmail addresses of the Google accounts you intend to connect to DriveHive.
+2. **Authorize Login**:
+   - Only these approved test accounts can bypass the "unverified app" screen and link seamlessly via the DriveHive dashboard.
+3. **Alternative**:
+   - If you want to use accounts outside this list, you can register your own Google Developer Console project using the credentials described above.
 
 ---
 
@@ -399,4 +455,4 @@ This project is licensed under the **ISC License**.
 
 **Shadman Shahriar**
 
-Built as part of CSE 327 — Software Engineering at North South University, and later evolved into a full-stack production-grade application.
+Built as part of CSCI 327 — Software Engineering at Concordia University, and later evolved into a full-stack production-grade application.
