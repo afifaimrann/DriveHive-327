@@ -59,6 +59,18 @@ app.use('/api/storage', storageRoutes);
 app.use('/api/rag', ragRoutes);
 app.use('/api', healthRoutes); // exposes GET /api/health
 
+// Serve static client assets in production
+const clientDistPath = path.join(__dirname, '../client/dist');
+if (fs.existsSync(clientDistPath)) {
+  app.use(express.static(clientDistPath));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api')) {
+      return next();
+    }
+    res.sendFile(path.join(clientDistPath, 'index.html'));
+  });
+}
+
 // Fallback route for 404
 app.use((req, res, next) => {
   res.status(404).json({
