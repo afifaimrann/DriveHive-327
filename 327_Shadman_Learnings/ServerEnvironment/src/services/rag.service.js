@@ -289,7 +289,7 @@ export async function queryRAG(userId, query, fileIds = null) {
   // 3. Search Supabase for similar chunks
   const { data: matchedChunks, error: matchError } = await supabase.rpc('match_document_chunks', {
     query_embedding: queryVector,
-    match_threshold: 0.3,
+    match_threshold: 0.05,
     match_count: 5,
     p_user_id: userId,
     p_file_ids: fileIds && fileIds.length > 0 ? fileIds : null,
