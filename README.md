@@ -399,4 +399,4 @@ This project is licensed under the **ISC License**.
 
 **Shadman Shahriar**
 
-Built as part of CSCI 327 — Software Engineering at Concordia University, and later evolved into a full-stack production-grade application.
+Built as part of CSE 327 — Software Engineering at North South University, and later evolved into a full-stack production-grade application.
