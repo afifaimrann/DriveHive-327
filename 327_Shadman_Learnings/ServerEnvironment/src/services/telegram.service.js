@@ -5,6 +5,7 @@ import supabase from '../config/supabase.js';
 import env from '../config/env.js';
 import logger from '../utils/logger.js';
 import { uploadFile, downloadFile, deleteFile } from './storage.service.js';
+import { queryRAG, indexFile } from './rag.service.js';
 
 let bot = null;
 
@@ -74,6 +75,21 @@ function escapeHtml(text) {
     .replace(/>/g, '&gt;');
 }
 
+/**
+ * Formats basic markdown elements (**bold**, *italic*, `code`) to Telegram HTML format safely
+ */
+function formatMarkdownToHtml(text) {
+  if (!text) return '';
+  let escaped = escapeHtml(text);
+  // Bold: **text** -> <b>text</b>
+  escaped = escaped.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
+  // Italic: *text* -> <i>text</i>
+  escaped = escaped.replace(/\*(.*?)\*/g, '<i>$1</i>');
+  // Inline Code: `code` -> <code>code</code>
+  escaped = escaped.replace(/`(.*?)`/g, '<code>$1</code>');
+  return escaped;
+}
+
 export function startBot() {
   if (!env.telegram.token) {
     logger.warn('Telegram token is missing, Telegram bot will not start.');
@@ -107,6 +123,7 @@ export function startBot() {
           `📁 /list - List your uploaded files\n` +
           `📥 /download &lt;file_id&gt; - Download a specific file\n` +
           `🗑️ /delete &lt;file_id&gt; - Delete a specific file\n` +
+          `🤖 /ask &lt;question&gt; - Ask a question about your files using LLM\n` +
           `⚙️ /addstorage - Information on connecting storage nodes\n` +
           `🔌 /unlink - Unlink this bot from your DriveHive account\n\n` +
           `📎 <b>Hint</b>: You can also upload any document (up to 20MB) directly by dragging it here.`,
@@ -309,6 +326,57 @@ export function startBot() {
     }
   });
 
+  // /ask command
+  bot.onText(/\/ask(?:\s+(.+))?/, async (msg, match) => {
+    const chatId = msg.chat.id.toString();
+    const query = match[1]?.trim();
+
+    if (!query) {
+      bot.sendMessage(chatId, '⚠️ Please specify a question. Example: /ask <code>how do I claim my expenses?</code>', { parse_mode: 'HTML' });
+      return;
+    }
+
+    try {
+      const profile = await getProfileByChatId(chatId);
+      if (!profile) {
+        bot.sendMessage(chatId, '❌ Please link your account first by entering your 8-character code.');
+        return;
+      }
+
+      // Check if user has LLM settings configured
+      const { data: userProfile, error: profileErr } = await supabase
+        .from('profiles')
+        .select('llm_provider, llm_api_key')
+        .eq('id', profile.id)
+        .single();
+
+      if (profileErr || !userProfile || !userProfile.llm_provider) {
+        bot.sendMessage(chatId, '❌ Please configure your LLM settings (API Key, Provider) on the web dashboard before querying.');
+        return;
+      }
+
+      bot.sendMessage(chatId, `🔍 Searching documents and thinking...`);
+
+      // Run RAG query
+      const result = await queryRAG(profile.id, query);
+
+      // Send response
+      let responseText = `🤖 <b>DriveHive AI:</b>\n\n${formatMarkdownToHtml(result.answer)}`;
+      
+      if (result.sources && result.sources.length > 0) {
+        responseText += `\n\n📚 <b>Sources:</b>\n`;
+        result.sources.forEach((source) => {
+          responseText += `• <i>${escapeHtml(source.filename)}</i>\n`;
+        });
+      }
+
+      bot.sendMessage(chatId, responseText, { parse_mode: 'HTML' });
+    } catch (err) {
+      logger.error({ error: err, chatId, query }, 'Error in /ask command');
+      bot.sendMessage(chatId, `❌ Failed to generate response: ${err.message || 'Unknown error'}`);
+    }
+  });
+
   // Handle document upload
   bot.on('document', async (msg) => {
     const chatId = msg.chat.id.toString();
@@ -347,9 +415,25 @@ export function startBot() {
         path: localFilePath,
       };
 
-      await uploadFile(profile.id, filePayload);
+      const fileRecord = await uploadFile(profile.id, filePayload);
 
       bot.sendMessage(chatId, `✅ <b>${escapeHtml(doc.file_name)}</b> successfully distributed and stored in your unified cloud pool!`, { parse_mode: 'HTML' });
+
+      // Trigger background RAG indexing if the file has extractable text
+      const ext = doc.file_name.split('.').pop().toLowerCase();
+      const isTextSupported = ['txt', 'md', 'csv', 'json', 'pdf', 'docx'].includes(ext) || 
+                              (doc.mime_type && doc.mime_type.startsWith('text/'));
+      if (isTextSupported && fileRecord) {
+        bot.sendMessage(chatId, `🧠 Auto-indexing <b>${escapeHtml(doc.file_name)}</b> for RAG query search...`, { parse_mode: 'HTML' });
+        indexFile(profile.id, fileRecord.id)
+          .then(() => {
+            bot.sendMessage(chatId, `✅ <b>${escapeHtml(doc.file_name)}</b> is now indexed and ready for /ask!`, { parse_mode: 'HTML' });
+          })
+          .catch((err) => {
+            logger.error({ error: err, fileId: fileRecord.id }, 'Background Telegram RAG indexing failed');
+            bot.sendMessage(chatId, `⚠️ Failed to index <b>${escapeHtml(doc.file_name)}</b> for RAG: ${err.message || 'Unknown error'}`, { parse_mode: 'HTML' });
+          });
+      }
 
       // Clean up temp file
       fs.unlink(localFilePath, (err) => {

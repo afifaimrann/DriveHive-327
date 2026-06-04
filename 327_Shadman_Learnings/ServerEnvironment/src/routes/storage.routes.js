@@ -8,6 +8,8 @@ import {
   getUserStorageQuota,
 } from '../services/storage.service.js';
 import { authenticate } from '../middleware/auth.middleware.js';
+import { indexFile } from '../services/rag.service.js';
+import logger from '../utils/logger.js';
 
 const router = express.Router();
 const upload = multer({ dest: 'uploads/' });
@@ -28,6 +30,16 @@ router.post('/upload', authenticate, upload.single('file'), async (req, res, nex
 
     res.write(JSON.stringify({ status: 'success', file: result }) + '\n');
     res.end();
+
+    // Trigger background RAG indexing if the file has extractable text
+    const ext = result.name.split('.').pop().toLowerCase();
+    const isTextSupported = ['txt', 'md', 'csv', 'json', 'pdf', 'docx'].includes(ext) || 
+                            (result.mime_type && result.mime_type.startsWith('text/'));
+    if (isTextSupported) {
+      indexFile(req.userId, result.id).catch((err) => {
+        logger.error({ error: err, fileId: result.id }, 'Background RAG indexing failed on file upload');
+      });
+    }
   } catch (error) {
     if (res.headersSent) {
       res.write(JSON.stringify({ status: 'error', message: error.message }) + '\n');

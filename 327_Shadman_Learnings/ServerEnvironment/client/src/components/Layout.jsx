@@ -9,6 +9,7 @@ import {
   LogOut,
   Menu,
   User,
+  Brain,
 } from 'lucide-react';
 
 /**
@@ -25,6 +26,7 @@ export function Layout({ children, title }) {
     { name: 'Dashboard', path: '/', icon: LayoutDashboard },
     { name: 'File Browser', path: '/files', icon: FolderOpen },
     { name: 'Connected Accounts', path: '/accounts', icon: Link2 },
+    { name: 'RAG Chat', path: '/rag', icon: Brain },
   ];
 
   const handleLogout = () => {

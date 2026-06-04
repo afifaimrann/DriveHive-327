@@ -15,6 +15,7 @@ import authRoutes from './routes/auth.routes.js';
 import oauthRoutes from './routes/oauth.routes.js';
 import storageRoutes from './routes/storage.routes.js';
 import healthRoutes from './routes/health.routes.js';
+import ragRoutes from './routes/rag.routes.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -55,6 +56,7 @@ app.use((req, res, next) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/oauth', oauthRoutes);
 app.use('/api/storage', storageRoutes);
+app.use('/api/rag', ragRoutes);
 app.use('/api', healthRoutes); // exposes GET /api/health
 
 // Fallback route for 404

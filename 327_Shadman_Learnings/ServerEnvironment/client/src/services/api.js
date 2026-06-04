@@ -216,6 +216,22 @@ class ApiClient {
     return new Blob(chunks);
   }
 
+  getRagSettings() {
+    return this.get('/rag/settings');
+  }
+
+  updateRagSettings(settings) {
+    return this.post('/rag/settings', settings);
+  }
+
+  indexFile(fileId) {
+    return this.post(`/rag/index/${fileId}`);
+  }
+
+  queryRag(query, fileIds = null) {
+    return this.post('/rag/query', { query, fileIds });
+  }
+
   generateTelegramCode() {
     return this.post('/auth/telegram/link-code');
   }

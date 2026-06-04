@@ -14,6 +14,7 @@ import {
   Loader2,
   Layers,
   Search,
+  Brain,
 } from 'lucide-react';
 
 /**
@@ -34,6 +35,7 @@ export function FileBrowser() {
   const [deleteProgressEvent, setDeleteProgressEvent] = useState(null);
   const [search, setSearch] = useState('');
   const [toast, setToast] = useState(null);
+  const [indexingIds, setIndexingIds] = useState([]);
   
   const fileInputRef = useRef(null);
 
@@ -202,6 +204,20 @@ export function FileBrowser() {
     } finally {
       setDeletingId(null);
       setDeleteProgressEvent(null);
+    }
+  };
+
+  const handleIndexFile = async (fileId, filename) => {
+    setIndexingIds(prev => [...prev, fileId]);
+    setToast({ message: `Indexing "${filename}" for RAG Q&A chat...`, type: 'success' });
+    try {
+      const result = await api.indexFile(fileId);
+      setToast({ message: `"${filename}" successfully indexed! (${result.chunksIndexed} chunks)`, type: 'success' });
+      fetchFiles();
+    } catch (err) {
+      setToast({ message: err.message || 'Indexing failed', type: 'error' });
+    } finally {
+      setIndexingIds(prev => prev.filter(id => id !== fileId));
     }
   };
 
@@ -494,6 +510,20 @@ export function FileBrowser() {
                               Chunked
                             </span>
                           )}
+                          {file.is_indexed && (
+                            <span 
+                              className="badge" 
+                              style={{ 
+                                backgroundColor: 'rgba(16, 185, 129, 0.15)', 
+                                color: '#10b981',
+                                border: '1px solid rgba(16, 185, 129, 0.3)',
+                                fontSize: '0.65rem'
+                              }}
+                            >
+                              <Brain size={10} style={{ marginRight: '4px' }} />
+                              Indexed
+                            </span>
+                          )}
                         </div>
                         <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: '4px 0 0' }}>
                           {formatBytes(file.size)} • {new Date(file.uploaded_at).toLocaleString()}
@@ -541,6 +571,36 @@ export function FileBrowser() {
                       </div>
                     ) : (
                       <div style={{ display: 'flex', gap: '10px' }}>
+                        {/* Index AI (only for text-extractable files) */}
+                        {(() => {
+                          const ext = file.name.split('.').pop().toLowerCase();
+                          const isTextSupported = ['txt', 'md', 'csv', 'json', 'pdf', 'docx'].includes(ext) || 
+                                                  (file.mime_type && file.mime_type.startsWith('text/'));
+                          if (!isTextSupported) return null;
+                          const isIndexing = indexingIds.includes(file.id);
+                          return (
+                            <button
+                              onClick={() => handleIndexFile(file.id, file.name)}
+                              className="btn btn-secondary"
+                              disabled={isDownloading || deletingId !== null || isIndexing}
+                              style={{
+                                padding: '8px 12px',
+                                fontSize: '0.85rem',
+                                borderColor: file.is_indexed ? 'rgba(16, 185, 129, 0.25)' : 'var(--border-color)',
+                                color: file.is_indexed ? '#34d399' : 'var(--text-primary)',
+                                backgroundColor: file.is_indexed ? 'rgba(16, 185, 129, 0.05)' : 'transparent',
+                              }}
+                            >
+                              {isIndexing ? (
+                                <Loader2 size={16} className="spin-animation" style={{ opacity: 0.8 }} />
+                              ) : (
+                                <Brain size={16} />
+                              )}
+                              {file.is_indexed ? 'Re-Index' : 'Index AI'}
+                            </button>
+                          );
+                        })()}
+
                         {/* Download */}
                         <button
                           onClick={() => handleDownload(file.id, file.name)}

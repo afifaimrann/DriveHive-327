@@ -7,6 +7,7 @@ import Register from './pages/Register.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import FileBrowser from './pages/FileBrowser.jsx';
 import Accounts from './pages/Accounts.jsx';
+import RagChat from './pages/RagChat.jsx';
 
 /**
  * Main Client Application routing tree.
@@ -42,6 +43,14 @@ function App() {
             element={
               <PrivateRoute>
                 <Accounts />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/rag"
+            element={
+              <PrivateRoute>
+                <RagChat />
               </PrivateRoute>
             }
           />
